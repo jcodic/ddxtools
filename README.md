@@ -1,7 +1,7 @@
 # ddxtools
 Set of very simple command line tools:<br/>
 1. Crypt - encrypt file/path or string<br/>
-   example:  crypt encrypt c:\temp output.enc inc=.\*jpg exc=.\*\\\avatars\\\\.\*<br/>
+   <sub>example:  crypt encrypt c:\temp output.enc inc=.\*jpg exc=.\*\\\avatars\\\\.\*</sub><br/>
 2. Hash - calculate hash of file/path or string<br/>
    example: hash hash_string "end of file" algo=md5 toclip<br/>
    example: hash hash c:\temp hash=c:\temp\my.hash exc=.\*my.hash$ algo=sha-256
