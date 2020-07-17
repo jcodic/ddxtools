@@ -104,6 +104,8 @@ public class Crypt implements Progress {
         ZipOutputStream zos = new ZipOutputStream(oos);
         if (settings.compressLevel != null) zos.setLevel(settings.compressLevel);
         
+        boolean pathLess = files.size() > 1;
+        
         for (File file : files) {
 
             if (file.isDirectory()) {
@@ -115,7 +117,7 @@ public class Crypt implements Progress {
                 Utils.out.print("[file] " + file.getPath() + " [" + Utils.describeFileLength(file.length()) + "] ");
             }
             
-            String path = Utils.getPathLess(file.getPath(), settings.sourcePath);
+            String path = pathLess?Utils.getPathLess(file.getPath(), settings.sourcePath):file.getPath();
             
             if (file.isDirectory()) {
                 
