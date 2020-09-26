@@ -1,1 +1,1 @@
-java -cp "target\*" ddx.tools.PerformanceTest %*
+java -cp "target\*" ddx.performance.PerformanceTest %*
