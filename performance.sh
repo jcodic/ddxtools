@@ -1,1 +1,1 @@
-java -cp "/home/user/app/lib/*" ddx.tools.PerformanceTest $*
+java -cp "/home/user/app/lib/*" ddx.performance.PerformanceTest $*
