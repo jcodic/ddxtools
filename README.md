@@ -11,6 +11,9 @@ Set of very simple command line tools:<br/>
 4. Performance - evaluate performance on compress/encrypt using specified number of threads<br/>
    <sub>example: performance run time=30</sub><br/>
    <sub>example: performance run time=30 threads=8 fill=false compress=false encrypt=false</sub><br/>
+5. Matches - find same files on different paths & disks, comparing them by name,size or content<br/>
+   <sub>example: matches path=q:</sub><br/>
+   <sub>example: matches path=q: path=u:\temp name=false content=true export=c:\report.csv</sub><br/>
 <sub>
 Every tool has it's running file for linux/windows (sh/bat). Running with no parameters prints help on commands.<br/>
 All tools contained in one compiled file (ddx-crypto-ver.jar) which you can find in 'target' directory with no dependecies.<br/>
