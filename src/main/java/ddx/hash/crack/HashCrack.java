@@ -95,6 +95,7 @@ public class HashCrack implements Progress {
             case 'H' : charset = commonUp; break;
             case 's' : charset = symb; break;
             case 'a' : charset = latinLo+latinUp+digi+symb; break;
+            case '?' : charset = "?"; break;
             default  : throw new Exception("Unknown charset code ["+code+"]");
         }
         

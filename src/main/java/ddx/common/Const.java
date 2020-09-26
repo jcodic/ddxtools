@@ -8,7 +8,7 @@ import java.text.DecimalFormat;
  */
 public class Const {
 
-    public static final String TOOLS_VERSION = "2020.07";
+    public static final String TOOLS_VERSION = "2020.09";
     public static final String TOOLS_VERSION_FULL = "Ddx tools version " + TOOLS_VERSION;
 
     public static final int PRINT_STR_AT_EVERY_BYTES = 2 * 1024 * 1024; // print symbol when amount of bytes processed
