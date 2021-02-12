@@ -14,6 +14,10 @@ Set of very simple command line tools:<br/>
 5. Matches - find same files on different paths & disks, comparing them by name,size or content<br/>
    <sub>example: matches path=q:</sub><br/>
    <sub>example: matches path=q: path=u:\temp name=false content=true export=c:\report.csv</sub><br/>
+6. Fill - write file filled with random bytes including hash code for later checking<br/>
+   <sub>example: fill fill data.raw 100gb algo=sha-512 buffer=256kb</sub><br/>
+   <sub>example: fill check data.raw</sub><br/>
+<br/>
 <sub>
 Every tool has it's running file for linux/windows (sh/bat). Running with no parameters prints help on commands.<br/>
 All tools contained in one compiled file (ddx-crypto-ver.jar) which you can find in 'target' directory with no dependecies.<br/>
