@@ -1,1 +1,1 @@
-java -cp "C:\App\@jar\*" ddx.fill.FillFile %*
+java -cp "target\*" ddx.fill.FillFile %*
