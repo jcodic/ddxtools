@@ -36,5 +36,26 @@ public class Xoshiro256p {
         buffer.putLong(x);
         return buffer.array();
     }
+
+    public static byte[] createRandomBuffer(int size, long[] state) {
+
+        byte[] bf = new byte[size];
+
+        int pos = 0;
+
+        while (pos < size) {
+
+            long value = getNextLong(state);
+
+            for (int i = 0; i < 8; i++) {
+
+                bf[pos++] = (byte)(value & 0xFF);
+                value >>= 8;
+                if (pos == size) break;
+            }
+        }
+        
+        return bf;
+    }
     
 }
