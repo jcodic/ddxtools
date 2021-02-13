@@ -67,26 +67,6 @@ public class FillFile implements Progress {
         return true;
     }
 
-    private byte[] createRandomBuffer(int size, long[] xoshiroState) throws Exception {
-
-        byte[] bf = new byte[size];
-
-        int pos = 0;
-
-        while (pos < size) {
-
-            long value = Xoshiro256p.getNextLong(xoshiroState);
-
-            for (int i = 0; i < 8; i++) {
-
-                bf[pos++] = (byte)(value & 0xFF);
-                value >>= 8;
-            }
-        }
-        
-        return bf;
-    }
-    
     private boolean processFill() throws Exception {
 
         if (!initMessageDigest()) return false;
@@ -125,7 +105,7 @@ public class FillFile implements Progress {
             
             int bflen = settings.bufferSize;
             if (bflen > left) bflen = (int)left;
-            byte[] bf = createRandomBuffer(bflen, xoshiroState);
+            byte[] bf = Xoshiro256p.createRandomBuffer(bflen, xoshiroState);
         
             fos.write(bf);
             md.update(bf);
