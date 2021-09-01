@@ -17,6 +17,12 @@ Set of very simple command line tools:<br/>
 6. Fill - write file filled with random bytes including hash code for later checking<br/>
    <sub>example: fill fill data.raw 100gb algo=sha-512 buffer=256kb</sub><br/>
    <sub>example: fill check data.raw</sub><br/>
+7. FileTools - set of tools to work with binary file<br/>
+   <sub>example: filetools search binfile.dat FFFCBB</sub><br/>
+   <sub>example: filetools cut binfile.dat pieces 100kb max=10</sub><br/>
+   <sub>example: filetools inverse binfile.dat inversed.dat shuffle=10000 filebf=100kb</sub><br/>
+   <sub>example: filetools entropy binfile.dat</sub><br/>
+   <sub>example: filetools print binfile.dat start=1000 len=20</sub><br/>
 <br/>
 <sub>
 Every tool has it's running file for linux/windows (sh/bat). Running with no parameters prints help on commands.<br/>
