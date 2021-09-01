@@ -1,0 +1,1 @@
+java -cp "target\*" ddx.filetools.FileTools %*
