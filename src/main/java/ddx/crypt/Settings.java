@@ -24,6 +24,7 @@ public class Settings extends CommonSettigns {
     public Integer compressLevel;
     public boolean useEncryption = DEFAULT_USE_ENCRYPTION;
     public boolean calcCRC = DEFAULT_CALCULATE_CRC;
+    public long maxLength = -1;
 
     public boolean copyResultToClipboard = false;
     

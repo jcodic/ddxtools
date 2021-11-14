@@ -1,8 +1,11 @@
 package ddx.crypt;
 
 import ddx.common.Const;
+import ddx.common.MultiFileInputStream;
+import ddx.common.MultiFileOutputStream;
 import ddx.common.PrinterConsole;
 import ddx.common.Progress;
+import ddx.common.SizeConv;
 import ddx.common.Utils;
 import ddx.common.Xoshiro256p;
 import java.io.BufferedOutputStream;
@@ -220,7 +223,7 @@ public class Crypt implements Progress {
         Path parent = Paths.get(outputPath).getParent();
         if (parent != null && !Files.exists(parent)) Files.createDirectories(parent);
 
-        FileOutputStream fos = new FileOutputStream(outputPath);
+        OutputStream fos = settings.maxLength>0?new MultiFileOutputStream(settings.maxLength,outputPath):new FileOutputStream(outputPath);
         OutputStream oos = fos;
         CipherOutputStream cos = null;
         if (settings.useEncryption) oos = cos = new CipherOutputStream(fos, getCipher(Cipher.ENCRYPT_MODE));
@@ -315,9 +318,14 @@ public class Crypt implements Progress {
         fos.close();
     }
     
+    private boolean isMultipart() throws Exception {
+        
+        return settings.sourcePath.length() > 4 && settings.sourcePath.endsWith(".001");
+    }
+    
     private boolean decryptFiles() throws Exception {
 
-        FileInputStream fis = new FileInputStream(settings.sourcePath);
+        InputStream fis = isMultipart()?new MultiFileInputStream(settings.sourcePath.substring(0, settings.sourcePath.length()-4)):new FileInputStream(settings.sourcePath);
         InputStream ois = fis;
         CipherInputStream cis = null;
         if (settings.useEncryption) ois = cis = new CipherInputStream(fis, getCipher(Cipher.DECRYPT_MODE));
@@ -411,7 +419,7 @@ public class Crypt implements Progress {
     
     private boolean checkFiles() throws Exception {
 
-        FileInputStream fis = new FileInputStream(settings.sourcePath);
+        InputStream fis = isMultipart()?new MultiFileInputStream(settings.sourcePath.substring(0, settings.sourcePath.length()-4)):new FileInputStream(settings.sourcePath);
         InputStream ois = fis;
         CipherInputStream cis = null;
         if (settings.useEncryption) ois = cis = new CipherInputStream(fis, getCipher(Cipher.DECRYPT_MODE));
@@ -1018,6 +1026,7 @@ public class Crypt implements Progress {
         String argInc = "inc=";
         String argExc = "exc=";
         String argCRC = "crc=";
+        String argMaxLength = "maxlength=";
         String argToClip = "toclip";
         if (arg.startsWith(argCompress)) settings.compressLevel = Integer.parseInt(arg.substring(argCompress.length())); else
         if (arg.startsWith(argUseEncryption)) settings.useEncryption = Boolean.parseBoolean(arg.substring(argUseEncryption.length())); else
@@ -1027,6 +1036,7 @@ public class Crypt implements Progress {
         if (arg.startsWith(argInc)) settings.addToInclude(arg.substring(argInc.length())); else
         if (arg.startsWith(argExc)) settings.addToExclude(arg.substring(argExc.length())); else
         if (arg.startsWith(argCRC)) settings.calcCRC = Boolean.parseBoolean(arg.substring(argCRC.length())); else
+        if (arg.startsWith(argMaxLength)) settings.maxLength = SizeConv.strToSize(arg.substring(argMaxLength.length())); else
         if (arg.equals(argToClip)) settings.copyResultToClipboard = true; else
         Utils.out.println("Unknown argument: "+arg);
     }
@@ -1095,6 +1105,7 @@ public class Crypt implements Progress {
         Utils.out.println(15, "crc=true/false - calculate file CRC (default: "+Settings.DEFAULT_CALCULATE_CRC+")");
         Utils.out.println(15, "password=secretphrase - specify password (will be prompted in command line if not provided)");
         Utils.out.println(15, "passwordhex=specify password as hex string");
+        Utils.out.println(15, "maxlength=value - split in multiple parts with max length (example: 2000mb)");
 
         Utils.out.println( 5, "decrypt - decrypt & decompress part or entire encrypted file to specified destination path");
         Utils.out.println(10, "Params: <encrypted_file> <destination_path>");

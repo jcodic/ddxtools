@@ -7,6 +7,7 @@ import ddx.common.Str;
 import ddx.common.Utils;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -18,7 +19,7 @@ import java.util.Arrays;
  */
 public class FileTools implements Progress {
     
-    public static enum Command {SEARCH, INVERSE, BYTE_VALUE, SHA256, PRINT, CUT, RESTORE, ENTROPY};
+    public static enum Command {SEARCH, PATCH, INVERSE, BYTE_VALUE, SHA256, PRINT, CUT, RESTORE, ENTROPY};
 
     private Command command;
     private final Settings settings = new Settings();
@@ -30,9 +31,10 @@ public class FileTools implements Progress {
         public long start;
         public long length;
         public int max;
-        public byte[] searchBf;
+        public byte[] workBf;
         public int shuffle;
         public long portion;
+        public long position;
         public int fileBfSize;
     }
     
@@ -59,7 +61,7 @@ public class FileTools implements Progress {
             return false;
         }
         
-        if (Utils.isEmptyBuffer(settings.searchBf)) {
+        if (Utils.isEmptyBuffer(settings.workBf)) {
             
             Utils.out.println("Search is not defined!");
             return false;
@@ -70,15 +72,54 @@ public class FileTools implements Progress {
         Utils.out.println(Str.getStringWPrefix("Searching in file", SP, " ", false)+" : "+file.getAbsolutePath());
         Utils.out.println(Str.getStringWPrefix("File length", SP, " ", false)+" : "+Utils.describeFileLength(file.length()));
         Utils.out.println(Str.getStringWPrefix("Start position", SP, " ", false)+" : "+Const.NUM_FORMATTER.format(settings.start));
-        Utils.out.println(Str.getStringWPrefix("Searching for bytes", SP, " ", false)+" : "+Utils.toHex(settings.searchBf)+" length "+settings.searchBf.length);
+        Utils.out.println(Str.getStringWPrefix("Searching for bytes", SP, " ", false)+" : "+Utils.toHex(settings.workBf)+" length "+settings.workBf.length);
         
         FileSearch tool = new FileSearch();
         if (settings.fileBfSize > 0) tool.setFileBfSize(settings.fileBfSize);
         tool.init(file, settings.start, SP);
         tool.start();
-        tool.process(settings.searchBf);
+        tool.process(settings.workBf);
         tool.end();
         tool.printSpeed();
+        
+        return true;
+    }
+    
+    private boolean processPatch() throws Exception {
+
+        File file = new File(settings.filePath);
+        
+        if (!file.exists() || file.isDirectory()) {
+
+            Utils.out.println("File ["+settings.filePath+"] isn't correct!");
+            return false;
+        }
+        
+        if (Utils.isEmptyBuffer(settings.workBf)) {
+            
+            Utils.out.println("Patch is not defined!");
+            return false;
+        }
+        
+        if (settings.position + settings.workBf.length > file.length()) {
+            
+            Utils.out.println("Patching exceed file length!");
+            return false;
+        }
+        
+        int SP = 30;
+
+        Utils.out.println(Str.getStringWPrefix("Patching file", SP, " ", false)+" : "+file.getAbsolutePath());
+        Utils.out.println(Str.getStringWPrefix("File length", SP, " ", false)+" : "+Utils.describeFileLength(file.length()));
+        Utils.out.println(Str.getStringWPrefix("Patching position", SP, " ", false)+" : "+Const.NUM_FORMATTER.format(settings.position));
+        Utils.out.println(Str.getStringWPrefix("Patching with bytes", SP, " ", false)+" : "+Utils.toHex(settings.workBf)+" length "+settings.workBf.length);
+        
+        RandomAccessFile raf = new RandomAccessFile(file, "rw");
+        raf.seek(settings.position);
+        raf.write(settings.workBf);
+        raf.close();
+
+        Utils.out.println("Done.");
         
         return true;
     }
@@ -328,6 +369,7 @@ public class FileTools implements Progress {
         switch (command) {
             
             case SEARCH               : return processSearch();
+            case PATCH                : return processPatch();
             case PRINT                : return processPrint();
             case INVERSE              : return processInverse();
             case BYTE_VALUE           : return processByteValue();
@@ -367,6 +409,9 @@ public class FileTools implements Progress {
         Utils.out.println(10, "Params: <filepath> <hex_string>");
         Utils.out.println(10, "Available options:");
         Utils.out.println(15, "start=long - starting position");
+
+        Utils.out.println( 5, "patch - patch file by replacing bytes in file at defined position");
+        Utils.out.println(10, "Params: <filepath> <hex_string> <position>");
 
         Utils.out.println( 5, "print - print part of bin-file to console");
         Utils.out.println(10, "Params <filepath>");
@@ -411,14 +456,17 @@ public class FileTools implements Progress {
         settings.filePath2 = value;
     }
     
-    public void setSearchBf(String value) {
-        settings.searchBf = Utils.fromHex(value);
+    public void setWorkBf(String value) {
+        settings.workBf = Utils.fromHex(value);
     }
 
     public void setPortion(String value) throws Exception {
         settings.portion = SizeConv.strToSize(value);
     }
 
+    public void setPosition(String value) throws Exception {
+        settings.position = Long.parseLong(value);
+    }
     
     public static void main(String[] args) {
         
@@ -438,8 +486,15 @@ public class FileTools implements Progress {
                     tool.setCommand(Command.SEARCH); 
                     if (!Utils.checkArgs(args, 3)) return;
                     tool.setFilePath(args[1]);
-                    tool.setSearchBf(args[2]);
+                    tool.setWorkBf(args[2]);
                     tool.processArgs(args, 3);
+                    break;
+                case "patch"  : 
+                    tool.setCommand(Command.PATCH); 
+                    if (!Utils.checkArgs(args, 4)) return;
+                    tool.setFilePath(args[1]);
+                    tool.setWorkBf(args[2]);
+                    tool.setPosition(args[3]);
                     break;
                 case "print"  : 
                     tool.setCommand(Command.PRINT); 

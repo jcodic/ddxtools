@@ -3,12 +3,17 @@ package ddx.crypt;
 import ddx.common.Const;
 import ddx.common.PrinterConsole;
 import ddx.common.SizeConv;
+import ddx.common.Str;
 import ddx.common.Utils;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Random;
 import javax.crypto.Cipher;
 
@@ -51,17 +56,37 @@ public class ShuffleCrypt extends Crypt {
     private Random rnd;
     private long randomSeed = System.currentTimeMillis();
     private int cycleCount = 1;
+    private String[] usedAlgo = ALGOS;
+    private String algoFilter;
+    
+    private boolean initAlgos() throws Exception {
+        
+        if (!Str.isEmpty(algoFilter)) {
+            
+            List<String> suit = new LinkedList<>();
+            for (String algo : ALGOS) if (algo.contains(algoFilter)) suit.add(algo);
+            if (!suit.isEmpty()) usedAlgo = suit.toArray(new String[0]);
+        }
+        
+        return usedAlgo.length > 0;
+    }
     
     private boolean init() throws Exception {
     
         rnd = new Random(randomSeed);
+        
+        if (!initAlgos()) {
+            
+            Utils.out.println("Can't init algorithms!");
+            return false;
+        }
         
         return true;
     }
     
     private void getNextAlgorithmAndPassword() {
         
-        settings.cryptAlgorithm = ALGOS[rnd.nextInt(ALGOS.length)];
+        settings.cryptAlgorithm = usedAlgo[rnd.nextInt(usedAlgo.length)];
         int passwordLen = 1 + rnd.nextInt(32);
         settings.password = new byte[passwordLen];
         rnd.nextBytes(settings.password);
@@ -120,7 +145,7 @@ public class ShuffleCrypt extends Crypt {
         
         Utils.out.println("Sha256 file hash ["+Utils.toHex(hash)+"]");
         
-        Utils.out.println("Starting encryption (seed: "+randomSeed+" count: "+cycleCount+") ...");
+        Utils.out.println("Starting encryption (algos: "+usedAlgo.length+" seed: "+randomSeed+" count: "+cycleCount+" ...");
         
         for (int i = 0; i < cycleCount; i++) {
             
@@ -165,7 +190,7 @@ public class ShuffleCrypt extends Crypt {
             Utils.out.println("Wrong file!");
             return false;
         }
-        
+
         long len = file.length();
         
         Utils.out.println("Reading file ["+file.getAbsolutePath()+"]");
@@ -196,7 +221,7 @@ public class ShuffleCrypt extends Crypt {
             inverse[i] = rnd.nextBoolean();
         }
         
-        Utils.out.println("Starting decryption (seed: "+randomSeed+" count: "+cycleCount+") ...");
+        Utils.out.println("Starting decryption (algos: "+usedAlgo.length+" seed: "+randomSeed+" count: "+cycleCount+" ...");
         
         for (int i = cycleCount - 1; i >= 0; i--) {
             
@@ -255,6 +280,8 @@ public class ShuffleCrypt extends Crypt {
             return false;
         }
         
+        if (!(Files.exists(Paths.get(fileOut.getParent())))) Files.createDirectories(Paths.get(fileOut.getParent()));
+        
         FileOutputStream fos = new FileOutputStream(fileOut);
         fos.write(bf, 4 + 32, orilen);
         fos.close();
@@ -302,7 +329,7 @@ public class ShuffleCrypt extends Crypt {
             inverse[i] = rnd.nextBoolean();
         }
         
-        Utils.out.println("Starting decryption (seed: "+randomSeed+" count: "+cycleCount+") ...");
+        Utils.out.println("Starting decryption (algos: "+usedAlgo.length+" seed: "+randomSeed+" count: "+cycleCount+" ...");
         
         for (int i = cycleCount - 1; i >= 0; i--) {
             
@@ -372,8 +399,10 @@ public class ShuffleCrypt extends Crypt {
         
         String argSeed = "seed=";
         String argCount = "count=";
+        String argAlgo = "algo=";
         if (arg.startsWith(argSeed)) randomSeed = Long.parseLong(arg.substring(argSeed.length())); else
         if (arg.startsWith(argCount)) cycleCount = Integer.parseInt(arg.substring(argCount.length())); else
+        if (arg.startsWith(argAlgo)) algoFilter = arg.substring(argAlgo.length()).toLowerCase(); else
         Utils.out.println("Unknown argument: "+arg);
     }
 
@@ -395,16 +424,19 @@ public class ShuffleCrypt extends Crypt {
         Utils.out.println(10, "Available options:");
         Utils.out.println(15, "seed=long - random seed for passwords generation (default: system time in ms)");
         Utils.out.println(15, "count=int - encryption cycle count (default: "+cycleCount+")");
+        Utils.out.println(15, "algo=filter - use only algorithms which passes filter");
 
         Utils.out.println( 5, "decrypt - decrypt file");
         Utils.out.println(10, "Params: <source_file> <destination_file> <seed>");
         Utils.out.println(10, "Available options:");
         Utils.out.println(15, "count=int - decryption cycle count (default: "+cycleCount+")");
+        Utils.out.println(15, "algo=filter - use only algorithms which passes filter");
 
         Utils.out.println( 5, "check - check encrypted file by decrypting it in memory");
         Utils.out.println(10, "Params: <source_file> <seed>");
         Utils.out.println(10, "Available options:");
         Utils.out.println(15, "count=int - decryption cycle count (default: "+cycleCount+")");
+        Utils.out.println(15, "algo=filter - use only algorithms which passes filter");
     }
 
     public static void main(String[] args) {
