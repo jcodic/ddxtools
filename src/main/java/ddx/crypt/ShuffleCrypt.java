@@ -11,7 +11,9 @@ import java.io.FileOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
@@ -58,6 +60,7 @@ public class ShuffleCrypt extends Crypt {
     private int cycleCount = 1;
     private String[] usedAlgo = ALGOS;
     private String algoFilter;
+    private boolean deleteInput = false;
     
     private boolean initAlgos() throws Exception {
         
@@ -102,17 +105,62 @@ public class ShuffleCrypt extends Crypt {
     }
     
     private boolean processEncrypt() throws Exception {
+
+        if (Str.isEmpty(settings.sourcePath)) {
+            
+            Utils.out.println("Wrong source file!");
+            return false;
+        }
         
-        File file = new File(settings.sourcePath);
+        if (settings.sourcePath.equalsIgnoreCase("x") && settings.destinationPath.equalsIgnoreCase("x")) {
+            
+            List<File> toProcess = new LinkedList<>();
+            
+            File f = new File(".");
+            for (File file : f.listFiles()) {
+                
+                if (file.exists() && !file.isDirectory() && !file.getName().toLowerCase().endsWith(".sc")) toProcess.add(file);
+            }
+            
+            if (toProcess.isEmpty()) {
+                
+                Utils.out.println("No files to process!");
+                return false;
+            }
+            
+            List<File> toProcessSorted = new ArrayList<>(toProcess.size());
+            for (File file : toProcess) toProcessSorted.add(file);
+            Collections.sort(toProcessSorted);
+            
+            boolean reInit = false;
+            for (File file : toProcessSorted) {
+                
+                if (reInit) init();
+                String fileName = file.getName();
+                if (!processEncrypt(fileName, fileName+".sc")) return false;
+                reInit = true;
+            }
+            
+            return true;
+            
+        } else {
+            
+            return processEncrypt(settings.sourcePath, settings.destinationPath);
+        }
+    }
+    
+    private boolean processEncrypt(String sourcePath, String destinationPath) throws Exception {
+        
+        File file = new File(sourcePath);
         
         if (!file.exists() || file.isDirectory()) {
             
-            Utils.out.println("Wrong file!");
+            Utils.out.println("Wrong source file!");
             return false;
         }
         
         long len = file.length();
-        if (len > SizeConv.GB * 2) {
+        if (len >= SizeConv.GB * 2) {
             
             Utils.out.println("File is too long!");
             return false;
@@ -164,7 +212,7 @@ public class ShuffleCrypt extends Crypt {
             Utils.out.println(" done");
         }
         
-        File fileOut = new File(settings.destinationPath);
+        File fileOut = new File(destinationPath);
 
         Utils.out.println("Writing output file ["+fileOut.getAbsolutePath()+"]");
         
@@ -177,6 +225,12 @@ public class ShuffleCrypt extends Crypt {
         FileOutputStream fos = new FileOutputStream(fileOut);
         fos.write(bf);
         fos.close();
+        
+        if (deleteInput) {
+            
+            boolean success = file.delete();
+            Utils.out.println("Deleting input file ... "+(success?"ok":"error"));
+        }
         
         return true;
     }
@@ -280,11 +334,17 @@ public class ShuffleCrypt extends Crypt {
             return false;
         }
         
-        if (!(Files.exists(Paths.get(fileOut.getParent())))) Files.createDirectories(Paths.get(fileOut.getParent()));
+        if (fileOut.getParent() != null && !(Files.exists(Paths.get(fileOut.getParent())))) Files.createDirectories(Paths.get(fileOut.getParent()));
         
         FileOutputStream fos = new FileOutputStream(fileOut);
         fos.write(bf, 4 + 32, orilen);
         fos.close();
+        
+        if (deleteInput) {
+            
+            boolean success = file.delete();
+            Utils.out.println("Deleting input file ... "+(success?"ok":"error"));
+        }
         
         return true;
     }
@@ -400,9 +460,11 @@ public class ShuffleCrypt extends Crypt {
         String argSeed = "seed=";
         String argCount = "count=";
         String argAlgo = "algo=";
+        String argDelete = "delete";
         if (arg.startsWith(argSeed)) randomSeed = Long.parseLong(arg.substring(argSeed.length())); else
         if (arg.startsWith(argCount)) cycleCount = Integer.parseInt(arg.substring(argCount.length())); else
         if (arg.startsWith(argAlgo)) algoFilter = arg.substring(argAlgo.length()).toLowerCase(); else
+        if (arg.startsWith(argDelete)) deleteInput = true; else
         Utils.out.println("Unknown argument: "+arg);
     }
 
@@ -421,10 +483,12 @@ public class ShuffleCrypt extends Crypt {
         
         Utils.out.println( 5, "encrypt - encrypt file in memory multiple times with random algorithms and passwords");
         Utils.out.println(10, "Params: <source_file> <destination_file>");
+        Utils.out.println(10, "* use \"x x\" as <source_file> <destination_file> to process all files in current folder");
         Utils.out.println(10, "Available options:");
         Utils.out.println(15, "seed=long - random seed for passwords generation (default: system time in ms)");
         Utils.out.println(15, "count=int - encryption cycle count (default: "+cycleCount+")");
         Utils.out.println(15, "algo=filter - use only algorithms which passes filter");
+        Utils.out.println(15, "delete - delete input file");
 
         Utils.out.println( 5, "decrypt - decrypt file");
         Utils.out.println(10, "Params: <source_file> <destination_file> <seed>");
