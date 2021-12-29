@@ -57,6 +57,7 @@ public class ShuffleCrypt extends Crypt {
     private Command command;
     private Random rnd;
     private long randomSeed = System.currentTimeMillis();
+    private long maxLoad = -1;
     private int cycleCount = 1;
     private String[] usedAlgo = ALGOS;
     private String algoFilter;
@@ -112,12 +113,14 @@ public class ShuffleCrypt extends Crypt {
             return false;
         }
         
-        if (settings.sourcePath.equalsIgnoreCase("x") && settings.destinationPath.equalsIgnoreCase("x")) {
+        File sourceFile = new File(settings.sourcePath);
+        boolean processBulk = sourceFile.isDirectory();
+        
+        if (processBulk) {
             
             List<File> toProcess = new LinkedList<>();
             
-            File f = new File(".");
-            for (File file : f.listFiles()) {
+            for (File file : sourceFile.listFiles()) {
                 
                 if (file.exists() && !file.isDirectory() && !file.getName().toLowerCase().endsWith(".sc")) toProcess.add(file);
             }
@@ -132,12 +135,16 @@ public class ShuffleCrypt extends Crypt {
             for (File file : toProcess) toProcessSorted.add(file);
             Collections.sort(toProcessSorted);
             
+            File destinationFile = new File(settings.destinationPath);
+            
+            if (!(Files.exists(Paths.get(destinationFile.getAbsolutePath())))) Files.createDirectories(Paths.get(destinationFile.getAbsolutePath()));
+            
             boolean reInit = false;
             for (File file : toProcessSorted) {
                 
                 if (reInit) init();
-                String fileName = file.getName();
-                if (!processEncrypt(fileName, fileName+".sc")) return false;
+                String fileName = Utils.completePath(destinationFile.getAbsolutePath()) + file.getName() + ".sc";
+                if (!processEncrypt(file.getAbsolutePath(), fileName)) return false;
                 reInit = true;
             }
             
@@ -160,7 +167,10 @@ public class ShuffleCrypt extends Crypt {
         }
         
         long len = file.length();
-        if (len >= SizeConv.GB * 2) {
+        
+        if (maxLoad != -1 && maxLoad < len) len = maxLoad; 
+        
+        if (len + 4 + 32 > Integer.MAX_VALUE) {
             
             Utils.out.println("File is too long!");
             return false;
@@ -460,10 +470,12 @@ public class ShuffleCrypt extends Crypt {
         String argSeed = "seed=";
         String argCount = "count=";
         String argAlgo = "algo=";
+        String argMaxLoad = "maxload=";
         String argDelete = "delete";
         if (arg.startsWith(argSeed)) randomSeed = Long.parseLong(arg.substring(argSeed.length())); else
         if (arg.startsWith(argCount)) cycleCount = Integer.parseInt(arg.substring(argCount.length())); else
         if (arg.startsWith(argAlgo)) algoFilter = arg.substring(argAlgo.length()).toLowerCase(); else
+        if (arg.startsWith(argMaxLoad)) maxLoad = SizeConv.strToSize(arg.substring(argMaxLoad.length())); else
         if (arg.startsWith(argDelete)) deleteInput = true; else
         Utils.out.println("Unknown argument: "+arg);
     }
@@ -483,11 +495,11 @@ public class ShuffleCrypt extends Crypt {
         
         Utils.out.println( 5, "encrypt - encrypt file in memory multiple times with random algorithms and passwords");
         Utils.out.println(10, "Params: <source_file> <destination_file>");
-        Utils.out.println(10, "* use \"x x\" as <source_file> <destination_file> to process all files in current folder");
         Utils.out.println(10, "Available options:");
         Utils.out.println(15, "seed=long - random seed for passwords generation (default: system time in ms)");
         Utils.out.println(15, "count=int - encryption cycle count (default: "+cycleCount+")");
         Utils.out.println(15, "algo=filter - use only algorithms which passes filter");
+        Utils.out.println(15, "maxload=long - max file size to load (example: 2000mb)");
         Utils.out.println(15, "delete - delete input file");
 
         Utils.out.println( 5, "decrypt - decrypt file");
