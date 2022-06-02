@@ -65,7 +65,7 @@ public class Crypt implements Progress {
             
             if (Utils.isEmptyBuffer(settings.password)) {
                 
-                settings.password = new String(System.console().readPassword("Enter password: ")).getBytes("UTF-8");
+                settings.password = new String(System.console().readPassword("Enter password: ")).getBytes(settings.charset);
             }
             
             if (Utils.isEmptyBuffer(settings.password)) {
@@ -486,7 +486,7 @@ public class Crypt implements Progress {
     
     private String encryptString(String source) throws Exception {
 
-        return encryptBufferToString(source.getBytes("UTF-8"));
+        return encryptBufferToString(source.getBytes(settings.charset));
     }
     
     private String decryptString(String source) throws Exception {
@@ -500,7 +500,7 @@ public class Crypt implements Progress {
         cis.close();
         bis.close();
         
-        return new String(decryptedData, 0, decryptedLen, "UTF-8");
+        return new String(decryptedData, 0, decryptedLen, settings.charset);
     }
 
     private String encryptBufferToString(byte[] source) throws Exception {
@@ -605,13 +605,31 @@ public class Crypt implements Progress {
         
         List<File> files = Utils.scanForFiles(new File(settings.sourcePath), settings);
         
+        int filesUnreadable = 0;
+        
+        if (settings.skipUnread && !files.isEmpty()) {
+            
+            List<File> filesReadable = new ArrayList<>(files.size());
+            
+            for (File file : files) {
+                
+                if (Files.isReadable(file.toPath())) filesReadable.add(file); else filesUnreadable++;
+            }
+            
+            files = filesReadable;
+        }
+        
         Utils.out.println();
-        Utils.out.println("Files scanned : "+settings.filesScanned);
+        Utils.out.println("Files scanned : "+ settings.filesScanned);
         Utils.out.println("Files included: "+settings.filesIncluded);
         Utils.out.println("Files size found: "+Utils.describeFileLength(settings.filesSizeFound));
         Utils.out.println("Files size included: "+Utils.describeFileLength(settings.filesSizeIncluded));
+        if (settings.skipUnread) {
+            
+            Utils.out.println("Files unreadable: "+filesUnreadable);
+        }
         
-        if (settings.filesIncluded == 0) {
+        if (files.isEmpty()) {
             
             Utils.out.println("No files included, nothing todo, exit.");
             return false;
@@ -850,13 +868,13 @@ public class Crypt implements Progress {
 
     private boolean processToHex() throws Exception {
         
-        Utils.out.println("["+settings.sourceString+"] -> ["+Utils.toHex(settings.sourceString.getBytes("UTF-8"))+"]");
+        Utils.out.println("["+settings.sourceString+"] -> ["+Utils.toHex(settings.sourceString.getBytes(settings.charset))+"]");
         return true;
     }
     
     private boolean processFromHex() throws Exception {
         
-        Utils.out.println("["+settings.sourceString+"] -> ["+new String(Utils.fromHex(settings.sourceString),"UTF-8")+"]");
+        Utils.out.println("["+settings.sourceString+"] -> ["+new String(Utils.fromHex(settings.sourceString),settings.charset)+"]");
         return true;
     }
     
@@ -1027,17 +1045,21 @@ public class Crypt implements Progress {
         String argExc = "exc=";
         String argCRC = "crc=";
         String argMaxLength = "maxlength=";
+        String argCharset = "charset=";
         String argToClip = "toclip";
+        String argSkipUnread = "skipunread";
         if (arg.startsWith(argCompress)) settings.compressLevel = Integer.parseInt(arg.substring(argCompress.length())); else
         if (arg.startsWith(argUseEncryption)) settings.useEncryption = Boolean.parseBoolean(arg.substring(argUseEncryption.length())); else
-        if (arg.startsWith(argPassword)) settings.password = arg.substring(argPassword.length()).getBytes("UTF-8"); else
+        if (arg.startsWith(argPassword)) settings.password = arg.substring(argPassword.length()).getBytes(settings.charset); else
         if (arg.startsWith(argPasswordHex)) settings.password = Utils.fromHex(arg.substring(argPasswordHex.length())); else
         if (arg.startsWith(argAlgo)) settings.cryptAlgorithm = arg.substring(argAlgo.length()); else
         if (arg.startsWith(argInc)) settings.addToInclude(arg.substring(argInc.length())); else
         if (arg.startsWith(argExc)) settings.addToExclude(arg.substring(argExc.length())); else
         if (arg.startsWith(argCRC)) settings.calcCRC = Boolean.parseBoolean(arg.substring(argCRC.length())); else
         if (arg.startsWith(argMaxLength)) settings.maxLength = SizeConv.strToSize(arg.substring(argMaxLength.length())); else
+        if (arg.startsWith(argCharset)) settings.charset = arg.substring(argCharset.length()); else
         if (arg.equals(argToClip)) settings.copyResultToClipboard = true; else
+        if (arg.equals(argSkipUnread)) settings.skipUnread = true; else
         Utils.out.println("Unknown argument: "+arg);
     }
 
@@ -1063,7 +1085,7 @@ public class Crypt implements Progress {
     }
 
     public void setPassword(String password) throws Exception {
-        settings.password = password.getBytes("UTF-8");
+        settings.password = password.getBytes(settings.charset);
     }
 
     public void setUseEncryption(boolean value) throws Exception {
@@ -1106,6 +1128,7 @@ public class Crypt implements Progress {
         Utils.out.println(15, "password=secretphrase - specify password (will be prompted in command line if not provided)");
         Utils.out.println(15, "passwordhex=specify password as hex string");
         Utils.out.println(15, "maxlength=value - split in multiple parts with max length (example: 2000mb)");
+        Utils.out.println(15, "skipunread - skip files that cannot be read");
 
         Utils.out.println( 5, "decrypt - decrypt & decompress part or entire encrypted file to specified destination path");
         Utils.out.println(10, "Params: <encrypted_file> <destination_path>");
@@ -1156,10 +1179,10 @@ public class Crypt implements Progress {
         Utils.out.println(15, "password=secretphrase - specify password (will be prompted in command line if not provided)");
 
         Utils.out.println( 5, "to_hex - convert string to hex");
-        Utils.out.println(10, "Params: <source_string>");
-
         Utils.out.println( 5, "from_hex - convert hex to string");
         Utils.out.println(10, "Params: <source_string>");
+        Utils.out.println(10, "Available options:");
+        Utils.out.println(15, "charset=charset - specify charset (default: "+Settings.DEFAULT_CHARSET+")");
 
         Utils.out.println( 5, "self_test - process self test on java encryption algorithms");
         
@@ -1266,12 +1289,14 @@ public class Crypt implements Progress {
                     tool.setCommand(Command.TO_HEX); 
                     if (!Utils.checkArgs(args, 2)) return;
                     tool.setSourceString(args[1]);
+                    tool.processArgs(args, 2);
                     tool.settings.useEncryption = false;
                     break;
                 case "from_hex"  : 
                     tool.setCommand(Command.FROM_HEX); 
                     if (!Utils.checkArgs(args, 2)) return;
                     tool.setSourceString(args[1]);
+                    tool.processArgs(args, 2);
                     tool.settings.useEncryption = false;
                     break;
                 case "self_test"  : 

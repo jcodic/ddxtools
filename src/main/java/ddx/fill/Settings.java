@@ -13,6 +13,7 @@ public class Settings {
     public static final String DEFAULT_ALGORITHM = "SHA-256";
     public static final boolean DEFAULT_SHOW_HASH = false;
     public static final boolean DEFAULT_FILL_WITH_ZEROES = false;
+    public static final boolean DEFAULT_WRITE_BOX = true; // file box :: header + hash
     
     public String fileName;
     public long fileSize = -1;
@@ -23,5 +24,7 @@ public class Settings {
     public Long randomSeed = null;
     public boolean showHash = DEFAULT_SHOW_HASH;
     public boolean fillWithZeroes = DEFAULT_FILL_WITH_ZEROES;
+    public byte[] fillWithBytes = null;
+    public boolean box = DEFAULT_WRITE_BOX;
     
 }

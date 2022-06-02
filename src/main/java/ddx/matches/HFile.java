@@ -14,6 +14,7 @@ public class HFile {
     public final String name;
     public byte[] hashCache;
     private final int hashCode;
+    public boolean deleted = false;
 
     public HFile(File file) {
         this.file = file;

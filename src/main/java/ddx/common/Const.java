@@ -11,7 +11,7 @@ import java.util.Locale;
  */
 public class Const {
 
-    public static final String TOOLS_VERSION = "2022.01.02";
+    public static final String TOOLS_VERSION = "2022.05.01";
     public static final String TOOLS_VERSION_FULL = "Ddx tools version " + TOOLS_VERSION;
 
     public static final int KB = 1024;

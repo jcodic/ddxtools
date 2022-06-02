@@ -80,10 +80,25 @@ public class FillFile implements Progress {
         }
         
         long randomSeed = settings.randomSeed==null?System.currentTimeMillis():(long)settings.randomSeed;
+        boolean fillWithBytes = settings.fillWithBytes != null;
+        boolean specifiedFill = settings.fillWithZeroes || fillWithBytes;
+        int fillWithBytesPos = 0;
         
         Utils.out.println("Buffer ["+Utils.describeFileLength(settings.bufferSize)+"]");
         Utils.out.println("Hash algorithm ["+settings.algorithm+"]");
-        Utils.out.println("Random seed ["+randomSeed+"]");
+        if (specifiedFill) {
+
+            if (fillWithBytes) {
+                
+                Utils.out.println("Fill with bytes ["+Utils.toHex(settings.fillWithBytes)+"]");
+            } else {
+                
+                Utils.out.println("Fill with zeroes");
+            }
+        } else {
+            
+            Utils.out.println("Random seed ["+randomSeed+"]");
+        }
         Utils.out.print("Writing file ["+f.getAbsolutePath()+"] size ["+Utils.describeFileLength(settings.fileSize)+"] ");
 
         long start = System.currentTimeMillis();
@@ -91,9 +106,12 @@ public class FillFile implements Progress {
         starting();
 
         FileOutputStream fos = new FileOutputStream(f);
-        fos.write(Utils.longToBytes(settings.fileSize));
-        fos.write(settings.algorithm.length());
-        fos.write(settings.algorithm.getBytes());
+        if (settings.box) {
+            
+            fos.write(Utils.longToBytes(settings.fileSize));
+            fos.write(settings.algorithm.length());
+            fos.write(settings.algorithm.getBytes());
+        }
         
         int written = 0;
         long left = settings.fileSize;
@@ -105,7 +123,16 @@ public class FillFile implements Progress {
             
             int bflen = settings.bufferSize;
             if (bflen > left) bflen = (int)left;
-            byte[] bf = settings.fillWithZeroes?new byte[bflen]:Xoshiro256p.createRandomBuffer(bflen, xoshiroState);
+            byte[] bf = specifiedFill?new byte[bflen]:Xoshiro256p.createRandomBuffer(bflen, xoshiroState);
+            
+            if (fillWithBytes) {
+                
+                for (int i = 0; i < bflen; i++) {
+                    
+                    bf[i] = settings.fillWithBytes[fillWithBytesPos++];
+                    if (fillWithBytesPos == settings.fillWithBytes.length) fillWithBytesPos = 0;
+                }
+            }
         
             fos.write(bf);
             md.update(bf);
@@ -123,7 +150,7 @@ public class FillFile implements Progress {
         
         byte[] hash = md.digest();
         
-        fos.write(hash);
+        if (settings.box) fos.write(hash);
         fos.flush();
         fos.close();
         
@@ -163,7 +190,9 @@ public class FillFile implements Progress {
             return false;
         }
         
-        Utils.out.println("Checking file ["+f.getAbsolutePath()+"]");
+        long fileSize = f.length();
+
+        Utils.out.println("Checking file ["+f.getAbsolutePath()+"] size ["+Utils.describeFileLength(fileSize)+"]");
         
         long start = System.currentTimeMillis();
         
@@ -181,6 +210,13 @@ public class FillFile implements Progress {
         settings.fileSize = Utils.bytesToLong(tmp);
         
         Utils.out.println("Content size found: " + Utils.describeFileLength(settings.fileSize));
+        
+        if (settings.fileSize <= 0 || settings.fileSize > fileSize) {
+            
+            Utils.out.println("Wrong content size!");
+            fis.close();
+            return false;
+        }
         
         int t = fis.read();
         tmp = new byte[t];
@@ -289,11 +325,15 @@ public class FillFile implements Progress {
         String argSeed = "seed=";
         String argShowHash = "showhash=";
         String argZeroFill = "zerofill=";
+        String argBytesFill = "bytesfill=";
+        String argBox = "box=";
         if (arg.startsWith(argBuffer)) settings.bufferSize = (int)Utils.parseFileLength(arg.substring(argBuffer.length())); else
         if (arg.startsWith(argAlgo)) settings.algorithm = arg.substring(argAlgo.length()); else
         if (arg.startsWith(argSeed)) settings.randomSeed = Long.parseLong(arg.substring(argSeed.length())); else
         if (arg.startsWith(argShowHash)) settings.showHash = Boolean.parseBoolean(arg.substring(argShowHash.length())); else
         if (arg.startsWith(argZeroFill)) settings.fillWithZeroes = Boolean.parseBoolean(arg.substring(argZeroFill.length())); else
+        if (arg.startsWith(argBytesFill)) settings.fillWithBytes = Utils.fromHex(arg.substring(argBytesFill.length())); else
+        if (arg.startsWith(argBox)) settings.box = Boolean.parseBoolean(arg.substring(argBox.length())); else
         Utils.out.println("Unknown argument: "+arg);
     }
 
@@ -306,7 +346,7 @@ public class FillFile implements Progress {
         
         Utils.out.println("Usage: fill command <params> [options]");
         Utils.out.println("Commands:");
-        Utils.out.println( 5, "fill - write file with random generated bytes (adding hash to the end of file)");
+        Utils.out.println( 5, "fill - write file with random generated bytes (adding box : header + hash to the end of file)");
         Utils.out.println(10, "Params: <filename> <filesize>");
         Utils.out.println(10, "Available options:");
         Utils.out.println(15, "buffer=size - size of buffer when writing file (default: "+Settings.DEFAULT_BUFFER_SIZE+")");
@@ -314,6 +354,8 @@ public class FillFile implements Progress {
         Utils.out.println(15, "seed=long - initial seed for random generator (default: system.milliseconds)");
         Utils.out.println(15, "showhash=true/false - show content hash (default: "+Settings.DEFAULT_SHOW_HASH+")");
         Utils.out.println(15, "zerofill=true/false - fill with zeroes instead of random (default: "+Settings.DEFAULT_FILL_WITH_ZEROES+")");
+        Utils.out.println(15, "bytesfill=hex - fill with specified bytes instead of random");
+        Utils.out.println(15, "box=true/false - write file box for checking (default: "+Settings.DEFAULT_WRITE_BOX+")");
         Utils.out.println( 5, "check - read content of written file and check its hash");
         Utils.out.println(10, "Params: <filename>");
         Utils.out.println(10, "Available options:");

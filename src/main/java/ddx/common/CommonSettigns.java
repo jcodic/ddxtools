@@ -9,6 +9,8 @@ import java.util.List;
  */
 public class CommonSettigns {
  
+    public static final String DEFAULT_CHARSET = "UTF-8";
+
     public List<String> includeFiles;
     public List<String> excludeFiles;
 
@@ -18,6 +20,8 @@ public class CommonSettigns {
     public long filesSizeIncluded;
     public long filesSizeProcessed;
     
+    public String charset = DEFAULT_CHARSET;
+
     public void addToInclude(String filter) {
         
         if (includeFiles == null) includeFiles = new LinkedList<>();

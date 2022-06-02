@@ -9,8 +9,10 @@ import java.io.File;
 import java.io.FileReader;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.BitSet;
 import java.util.List;
 import java.util.LinkedList;
+import java.util.stream.IntStream;
 
 /**
  *
@@ -339,6 +341,24 @@ public class Utils {
         }
         return r.toString();
     }
+    
+    public static BitSet toBitset(byte data) {
+        BitSet bitset = new BitSet(8);
+        for (int i = 0; i < 8; i++) if ((data & (1 << i)) > 0) bitset.set(i);
+        return bitset;
+    }
+    
+    public static String toString(BitSet data) {
+        return IntStream
+                    .range(0, 8)
+                    .mapToObj(i -> data.get(7-i) ? '1' : '0')
+                    .collect(
+                            () -> new StringBuilder(8),
+                            (buffer, characterToAdd) -> buffer.append(characterToAdd),
+                            StringBuilder::append
+                    )
+                    .toString();        
+    }    
     
     public static Character[] getCharArr(String str) throws Exception {
         

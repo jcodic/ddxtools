@@ -10,7 +10,7 @@ import java.util.List;
  */
 public class Settings extends CommonSettigns {
 
-    public static enum ContentCompare {BYTES, HASH};
+    public static enum ContentCompare {BYTES, HASH, FAST};
     
     public static final boolean DEFAULT_SAME_NAME = true;
     public static final boolean DEFAULT_SAME_SIZE = true;
@@ -30,8 +30,8 @@ public class Settings extends CommonSettigns {
     public boolean maxInfo = false;
     public long sameContentMinSize = -1;
     public ContentCompare contentCompare = DEFAULT_CONTENT_COMPARE;
-    
-    
+    public boolean deleteDuplicates = false;
+
     
     public static ContentCompare getContentCompare(String s) {
     
@@ -39,9 +39,10 @@ public class Settings extends CommonSettigns {
         
         switch (s.toLowerCase()) {
             
-            case "bytes" : return ContentCompare.BYTES;
-            case "hash" : return ContentCompare.HASH;
-            default : return DEFAULT_CONTENT_COMPARE;
+            case "bytes"    : return ContentCompare.BYTES;
+            case "hash"     : return ContentCompare.HASH;
+            case "fast"     : return ContentCompare.FAST;
+            default         : return DEFAULT_CONTENT_COMPARE;
         }
     }
     

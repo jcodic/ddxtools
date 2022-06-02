@@ -1,5 +1,6 @@
 package ddx.filetools;
 
+import ddx.common.CommonSettigns;
 import ddx.common.Const;
 import ddx.common.Progress;
 import ddx.common.SizeConv;
@@ -25,12 +26,16 @@ import java.util.List;
  */
 public class FileTools implements Progress {
     
-    public static enum Command {SEARCH, PATCH, PATCH_FILE, PATCH_TEXT, INVERSE, BYTE_VALUE, SHA256, PRINT, CUT, RESTORE, ENTROPY, RENAME};
-
+    public static enum Command {SEARCH, PATCH, PATCH_FILE, PATCH_TEXT, INVERSE, BYTE_VALUE, SHA256, SHA384, SHA512, SHA1, SHA3, MD5, PRINT, CUT, RESTORE, ENTROPY, RENAME};
+    public static enum PrintOutput {HEX,BYTE,UBYTE,BITS};
+    
+    public static int DEFAULT_PRINT_WIDTH = 40;
+    public static PrintOutput DEFAULT_PRINT_OUTPUT = PrintOutput.HEX;
+            
     private Command command;
     private final Settings settings = new Settings();
     
-    private class Settings {
+    private class Settings extends CommonSettigns {
         
         public String filePath;
         public String filePath2;
@@ -40,6 +45,8 @@ public class FileTools implements Progress {
         public int max;
         public byte[] workBf;
         public int shuffle;
+        public int width = DEFAULT_PRINT_WIDTH;
+        public PrintOutput output = DEFAULT_PRINT_OUTPUT;
         public long portion;
         public long position;
         public int fileBfSize;
@@ -249,8 +256,8 @@ public class FileTools implements Progress {
             return false;
         }
 
-        byte[] patchBf = settings.filePath2.getBytes();
-        byte[] patchWithBf = settings.filePath3.getBytes();
+        byte[] patchBf = settings.filePath2.getBytes(settings.charset);
+        byte[] patchWithBf = settings.filePath3.getBytes(settings.charset);
         
         if (patchBf.length != patchWithBf.length) {
 
@@ -352,6 +359,7 @@ public class FileTools implements Progress {
         
         Utils.out.println(Str.getStringWPrefix("Length, bytes", SP, " ", false)+" : "+Const.NUM_FORMATTER.format(length));
         Utils.out.println(Str.getStringWPrefix("Length, bits", SP, " ", false)+" : "+Const.NUM_FORMATTER.format(length * 8));
+        Utils.out.println(Str.getStringWPrefix("Output", SP, " ", false)+" : "+settings.output.name());
         
         FileInputStream fis = new FileInputStream(file);
         if (settings.start > 0) fis.getChannel().position(settings.start);
@@ -365,8 +373,55 @@ public class FileTools implements Progress {
             return false;
         }
         
-        Utils.out.println("Output, hex ["+Utils.toHex(bf)+"]");
-        Utils.out.println("Output, raw "+Arrays.toString(bf));
+        boolean formatted = settings.width > 0;
+        int valueWidth = 0;
+
+        switch (settings.output) {
+
+            case HEX    : valueWidth = 2; break;
+            case BYTE   : valueWidth = 4; break;
+            case UBYTE  : valueWidth = 3; break;
+            case BITS   : valueWidth = 8; break;
+        }
+        
+        if (formatted) {
+            
+            String header = "";
+
+            for (int i = 0; i < Math.min(settings.width, bf.length); i++) {
+
+                header += (i>0?" ":"") + Str.getStringWPrefix(String.valueOf(i), valueWidth, "0", true);
+            }
+
+            Utils.out.println(header);
+            Utils.out.println(Str.getStringWPrefix("", header.length(), "-"));
+        }
+        
+        int pos = 0;
+        while (pos < bf.length) {
+
+            String line = "";
+
+            for (int i = 0; i < (formatted?settings.width:DEFAULT_PRINT_WIDTH); i++) {
+
+                String s = "";
+                String space = " ";
+                switch (settings.output) {
+
+                    case HEX    : s = Utils.toHex(new byte[]{bf[pos]}); space = formatted?" ":""; break;
+                    case BYTE   : s = formatted?Str.getStringWPrefix(String.valueOf(bf[pos]), valueWidth, " ", true):String.valueOf(bf[pos]); break;
+                    case UBYTE  : s = formatted?Str.getStringWPrefix(String.valueOf(Byte.toUnsignedInt(bf[pos])), valueWidth, " ", true):String.valueOf(Byte.toUnsignedInt(bf[pos])); break;
+                    case BITS   : s = Utils.toString(Utils.toBitset(bf[pos])); space = formatted?" ":""; break;
+                }
+
+                line += ((i>0 || (!formatted && pos > 0))?space:"") + s;
+                if (++pos == bf.length) break;
+            }
+
+            if (formatted) Utils.out.println(line); else Utils.out.print(line);
+        }
+        
+        if (!formatted) Utils.out.println();
         
         return true;
     }
@@ -437,7 +492,7 @@ public class FileTools implements Progress {
         return true;
     }
     
-    private boolean processSha256() throws Exception {
+    private boolean processFileHash(String algo) throws Exception {
 
         File file = new File(settings.filePath);
         
@@ -449,12 +504,12 @@ public class FileTools implements Progress {
         
         int SP = 30;
 
-        Utils.out.println(Str.getStringWPrefix("Calc sha256 of file", SP, " ", false)+" : "+file.getAbsolutePath());
+        Utils.out.println(Str.getStringWPrefix("Calc "+algo+" of file", SP, " ", false)+" : "+file.getAbsolutePath());
         Utils.out.println(Str.getStringWPrefix("File length", SP, " ", false)+" : "+Utils.describeFileLength(file.length()));
         
-        FileSha256 tool = new FileSha256();
+        FileHash tool = new FileHash();
         if (settings.fileBfSize > 0) tool.setFileBfSize(settings.fileBfSize);
-        tool.init(file);
+        tool.init(file, algo);
         tool.start();
         tool.process();
         tool.end();
@@ -664,6 +719,22 @@ public class FileTools implements Progress {
         return true;
     }
 
+    private long parseFilePos(String value) throws Exception {
+        
+        if (Str.isEmpty(value)) throw new Exception("Wrong file position value!");
+        File baseFile = new File(settings.filePath);
+        if (!baseFile.exists() || !baseFile.isFile()) throw new Exception("Can't find file position, no base file!");
+        long baseFileLen = baseFile.length();
+        boolean fromEnd = value.charAt(0) == '-';
+        long pos = SizeConv.strToSize(fromEnd?value.substring(1):value);
+        if (fromEnd) {
+            
+            pos = baseFileLen-pos;
+        }
+        if (pos < 0 || pos >= baseFileLen) throw new Exception("Wrong file position value!");
+        return pos;
+    }
+    
     public boolean run() throws Exception {
         
         if (!init()) return false;
@@ -677,7 +748,12 @@ public class FileTools implements Progress {
             case PRINT                : return processPrint();
             case INVERSE              : return processInverse();
             case BYTE_VALUE           : return processByteValue();
-            case SHA256               : return processSha256();
+            case SHA256               : return processFileHash("SHA-256");
+            case SHA384               : return processFileHash("SHA-384");
+            case SHA512               : return processFileHash("SHA-512");
+            case SHA1                 : return processFileHash("SHA-1");
+            case SHA3                 : return processFileHash("SHA3-256");
+            case MD5                  : return processFileHash("MD5");
             case ENTROPY              : return processEntropy();
             case CUT                  : return processCut();
             case RESTORE              : return processRestore();
@@ -688,6 +764,7 @@ public class FileTools implements Progress {
     
     public void processArg(String arg) throws Exception {
         
+        String argPos = "pos=";
         String argStart = "start=";
         String argLength = "len=";
         String argMax = "max=";
@@ -695,6 +772,10 @@ public class FileTools implements Progress {
         String argFileBf = "filebf=";
         String argPrefix = "prefix=";
         String argPostfix = "postfix=";
+        String argCharset = "charset=";
+        String argWidth = "width=";
+        String argOutput = "output=";
+        if (arg.startsWith(argPos)) settings.start = parseFilePos(arg.substring(argPos.length())); else
         if (arg.startsWith(argStart)) settings.start = Long.parseLong(arg.substring(argStart.length())); else
         if (arg.startsWith(argLength)) settings.length = Long.parseLong(arg.substring(argLength.length())); else
         if (arg.startsWith(argMax)) settings.max = Integer.parseInt(arg.substring(argMax.length())); else
@@ -702,6 +783,9 @@ public class FileTools implements Progress {
         if (arg.startsWith(argFileBf)) settings.fileBfSize = (int)SizeConv.strToSize(arg.substring(argFileBf.length())); else
         if (arg.startsWith(argPrefix)) settings.prefix = arg.substring(argPrefix.length()); else
         if (arg.startsWith(argPostfix)) settings.postfix = arg.substring(argPostfix.length()); else
+        if (arg.startsWith(argCharset)) settings.charset = arg.substring(argCharset.length()); else
+        if (arg.startsWith(argWidth)) settings.width = Integer.parseInt(arg.substring(argWidth.length())); else
+        if (arg.startsWith(argOutput)) settings.output = PrintOutput.valueOf(arg.substring(argOutput.length()).toUpperCase()); else
         Utils.out.println("Unknown argument: "+arg);
     }
 
@@ -717,7 +801,7 @@ public class FileTools implements Progress {
         Utils.out.println( 5, "search - search exact bytes position in file");
         Utils.out.println(10, "Params: <filepath> <hex_string>");
         Utils.out.println(10, "Available options:");
-        Utils.out.println(15, "start=long - starting position");
+        Utils.out.println(15, "pos=value - starting position (ex: 100, 1mb, -10kb (from the end of file)");
 
         Utils.out.println( 5, "patch - patch file by replacing bytes in file at defined position");
         Utils.out.println(10, "Params: <filepath> <hex_string> <position>");
@@ -731,8 +815,10 @@ public class FileTools implements Progress {
         Utils.out.println( 5, "print - print part of bin-file to console");
         Utils.out.println(10, "Params <filepath>");
         Utils.out.println(10, "Available options:");
-        Utils.out.println(15, "start=long - starting position");
+        Utils.out.println(15, "pos=value - starting position");
         Utils.out.println(15, "len=long - number of bytes");
+        Utils.out.println(15, "width=int - number of bytes per line (DEFAULT: "+DEFAULT_PRINT_WIDTH+"; use 0 for unformatted)");
+        Utils.out.println(15, "output="+Arrays.toString(PrintOutput.values())+" - choose output (DEFAULT: "+DEFAULT_PRINT_OUTPUT+")");
 
         Utils.out.println( 5, "inverse - inverse file bytes");
         Utils.out.println(10, "Params: <filepath_src> <filepath_dest>");
@@ -743,7 +829,7 @@ public class FileTools implements Progress {
         Utils.out.println( 5, "byte - calculate all bytes xor and add values of file");
         Utils.out.println(10, "Params: <filepath>");
 
-        Utils.out.println( 5, "sha256 - calculate sha256 value of file");
+        Utils.out.println( 5, "sha256, sha384, sha512, sha1, sha3, md5 - calculate hash value of file");
         Utils.out.println(10, "Params: <filepath>");
 
         Utils.out.println( 5, "entropy - calculate file entropy");
@@ -752,7 +838,7 @@ public class FileTools implements Progress {
         Utils.out.println( 5, "cut - cut file to pieces");
         Utils.out.println(10, "Params: <filepath> <out_directory> <portion>");
         Utils.out.println(10, "Available options:");
-        Utils.out.println(15, "start=long - starting position");
+        Utils.out.println(15, "pos=value - starting position");
         Utils.out.println(15, "max=int - max number of portions");
         
         Utils.out.println( 5, "restore - restore file from pieces");
@@ -789,7 +875,7 @@ public class FileTools implements Progress {
     }
 
     public void setPosition(String value) throws Exception {
-        settings.position = Long.parseLong(value);
+        settings.position = parseFilePos(value);
     }
     
     public static void main(String[] args) {
@@ -833,6 +919,7 @@ public class FileTools implements Progress {
                     tool.setFilePath(args[1]);
                     tool.setFilePath2(args[2]);
                     tool.setFilePath3(args[3]);
+                    tool.processArgs(args, 4);
                     break;
                 case "print"  : 
                     tool.setCommand(Command.PRINT); 
@@ -855,6 +942,36 @@ public class FileTools implements Progress {
                     break;
                 case "sha256"  : 
                     tool.setCommand(Command.SHA256); 
+                    if (!Utils.checkArgs(args, 2)) return;
+                    tool.setFilePath(args[1]);
+                    tool.processArgs(args, 2);
+                    break;
+                case "sha384"  : 
+                    tool.setCommand(Command.SHA384); 
+                    if (!Utils.checkArgs(args, 2)) return;
+                    tool.setFilePath(args[1]);
+                    tool.processArgs(args, 2);
+                    break;
+                case "sha512"  : 
+                    tool.setCommand(Command.SHA512); 
+                    if (!Utils.checkArgs(args, 2)) return;
+                    tool.setFilePath(args[1]);
+                    tool.processArgs(args, 2);
+                    break;
+                case "sha1"  : 
+                    tool.setCommand(Command.SHA1); 
+                    if (!Utils.checkArgs(args, 2)) return;
+                    tool.setFilePath(args[1]);
+                    tool.processArgs(args, 2);
+                    break;
+                case "sha3"  : 
+                    tool.setCommand(Command.SHA3); 
+                    if (!Utils.checkArgs(args, 2)) return;
+                    tool.setFilePath(args[1]);
+                    tool.processArgs(args, 2);
+                    break;
+                case "md5"  : 
+                    tool.setCommand(Command.MD5); 
                     if (!Utils.checkArgs(args, 2)) return;
                     tool.setFilePath(args[1]);
                     tool.processArgs(args, 2);

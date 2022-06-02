@@ -2,6 +2,7 @@ package ddx.matches;
 
 import ddx.common.Const;
 import ddx.common.Progress;
+import ddx.common.SizeConv;
 import ddx.common.Utils;
 import java.io.File;
 import java.io.FileInputStream;
@@ -88,6 +89,41 @@ public class FindMatches implements Progress {
         return file.hashCache = md.digest();
     }
 
+    private byte[] getFileContentFast(HFile file) throws Exception {
+        
+        if (file.length == 0) return new byte[1];
+        if (file.hashCache != null) return file.hashCache;
+        
+        if (settings.maxInfo) Utils.out.print("Calculating hash of first "+SizeConv.sizeToStrSimple(Const.FILE_BUFFER_SIZE)+" of "+file.path+" ");
+        
+        MessageDigest md = MessageDigest.getInstance(Settings.DEFAULT_HASH_ALGORITHM);
+        
+        FileInputStream streamIn = new FileInputStream(file.file);
+        
+        int loaded;
+        int loadedTotal = 0;
+        byte[] bf = new byte[Const.FILE_BUFFER_SIZE];
+        
+        if ((loaded = streamIn.read(bf)) > 0) {
+        
+            md.update(bf, 0, loaded);
+            
+            loadedTotal += loaded;
+            settings.filesSizeProcessed += loaded;
+            if (loadedTotal >= Const.PRINT_STR_AT_EVERY_BYTES) {
+
+                if (settings.maxInfo) Utils.out.print(Const.PRINT_STR);
+                loadedTotal -= Const.PRINT_STR_AT_EVERY_BYTES;
+            }
+        }
+        
+        streamIn.close();
+        
+        if (settings.maxInfo) Utils.out.println("done");
+        
+        return file.hashCache = md.digest();
+    }
+
     private boolean sameContent(HFile file1, HFile file2) throws IOException {
         
         if (file1.length != file2.length) return false;
@@ -149,6 +185,15 @@ public class FindMatches implements Progress {
         return Arrays.equals(getFileContentHash(file1), getFileContentHash(file2));
     }
     
+    private boolean sameContentFast(HFile file1, HFile file2) throws Exception {
+        
+        if (file1.length != file2.length) return false;
+        if (settings.sameContentMinSize != -1 && settings.sameContentMinSize > file1.length) return false;
+        if (file1.length == 0) return true;
+        
+        return Arrays.equals(getFileContentFast(file1), getFileContentFast(file2));
+    }
+    
     private Set<HFile> getSameContentBytes(HFile oriFile, Set<HFile> files) throws Exception {
         
         Set<HFile> sameFiles = new LinkedHashSet<>();
@@ -167,12 +212,22 @@ public class FindMatches implements Progress {
         return sameFiles;
     }
 
+    private Set<HFile> getSameContentFast(HFile oriFile, Set<HFile> files) throws Exception {
+        
+        Set<HFile> sameFiles = new LinkedHashSet<>();
+        
+        for (HFile file : files) if (sameContentFast(oriFile, file)) sameFiles.add(file);
+        
+        return sameFiles;
+    }
+
     private Set<HFile> getSameContent(HFile oriFile, Set<HFile> files) throws Exception {
         
         switch (settings.contentCompare) {
             
             case BYTES : return getSameContentBytes(oriFile, files);
             case HASH  : return getSameContentHash(oriFile, files);
+            case FAST  : return getSameContentFast(oriFile, files);
             default    : return null;
         }
     }
@@ -181,6 +236,10 @@ public class FindMatches implements Progress {
         
         StringBuilder sb = new StringBuilder(128*1024);
 
+        sb.append("").append(";").append("file path").append(";").
+           append("file name").append(";").append("file length").append(";").
+           append("deleted").append("\n");
+        
         settings.exportList.sort(new Comparator<Combo>() {
             @Override
             public int compare(Combo item1, Combo item2) {
@@ -198,14 +257,16 @@ public class FindMatches implements Progress {
             });
             
             sb.append("[file]").append(";").append(combo.file.path).append(";").
-               append(combo.file.name).append(";").append(combo.file.length).append("\n");
+               append(combo.file.name).append(";").append(combo.file.length).append(";").
+               append(combo.file.deleted?"yes;":"no").append("\n");
             
             int c = 1;
             
             for (HFile duplicate : combo.duplicates) {
             
                 sb.append(String.valueOf(c++)).append(";").append(duplicate.path).append(";").
-                   append(duplicate.name).append(";").append(duplicate.length).append("\n");
+                   append(duplicate.name).append(";").append(duplicate.length).append(";").
+                   append(duplicate.deleted?"yes;":"no").append("\n");
             }
             
             sb.append("\n");
@@ -296,6 +357,7 @@ public class FindMatches implements Progress {
 
         int filesUnMatched = 0;
         int filesCombos = 0;
+        int filesDeleted = 0;
         
         while (!files.isEmpty()) {
 
@@ -327,10 +389,21 @@ public class FindMatches implements Progress {
                 int c = 1;
                 for (HFile sameFile : sameFiles) {
                 
+                    String deleteTeg = "";
+                    
+                    if (settings.deleteDuplicates) {
+                        
+                        if (sameFile.deleted = sameFile.file.delete()) {
+                            
+                            deleteTeg = " * deleted";
+                            filesDeleted++;
+                        }
+                    }
+                    
                     String s = String.valueOf(c++);
                     while (s.length() < 4) s = "0" + s;
                     
-                    Utils.out.println("["+s+"] " + sameFile.path + " [" + Utils.describeFileLength(sameFile.length) + "]");
+                    Utils.out.println("["+s+"] " + sameFile.path + " [" + Utils.describeFileLength(sameFile.length) + "]"+deleteTeg);
                 }
 
                 Utils.out.println();
@@ -343,6 +416,7 @@ public class FindMatches implements Progress {
 
         Utils.out.println("Files unmatched: "+filesUnMatched);
         Utils.out.println("Files combos   : "+filesCombos);
+        if (settings.deleteDuplicates) Utils.out.println("Files deleted  : "+filesDeleted);
         
         long end = System.currentTimeMillis();
         long time = (end - start) / 1_000;
@@ -355,7 +429,7 @@ public class FindMatches implements Progress {
         return true;
     }
 
-    public void processArg(String arg) {
+    public void processArg(String arg) throws Exception {
         
         String argPath = "path=";
         String argName = "name=";
@@ -368,21 +442,23 @@ public class FindMatches implements Progress {
         String argExc = "exc=";
         String argExport = "export=";
         String argMaxInfo = "maxinfo";
+        String argAutoDelete = "autodelete";
         if (arg.startsWith(argPath)) settings.paths.add(arg.substring(argPath.length())); else
         if (arg.startsWith(argName)) settings.sameName = Boolean.parseBoolean(arg.substring(argName.length())); else
         if (arg.startsWith(argSize)) settings.sameSize = Boolean.parseBoolean(arg.substring(argSize.length())); else
         if (arg.startsWith(argContent)) settings.sameContent = Boolean.parseBoolean(arg.substring(argContent.length())); else
-        if (arg.startsWith(argContentMinSize)) settings.sameContentMinSize = Long.parseLong(arg.substring(argContentMinSize.length())); else
+        if (arg.startsWith(argContentMinSize)) settings.sameContentMinSize = SizeConv.strToSize(arg.substring(argContentMinSize.length())); else
         if (arg.startsWith(argContentComp)) settings.contentCompare = Settings.getContentCompare(arg.substring(argContentComp.length())); else
         if (arg.startsWith(argMatchesOnly)) settings.showMatchesOnly = Boolean.parseBoolean(arg.substring(argMatchesOnly.length())); else
         if (arg.startsWith(argInc)) settings.addToInclude(arg.substring(argInc.length())); else
         if (arg.startsWith(argExc)) settings.addToExclude(arg.substring(argExc.length())); else
         if (arg.startsWith(argExport)) settings.exportFile = arg.substring(argExport.length()); else
         if (arg.equals(argMaxInfo)) settings.maxInfo = true; else
+        if (arg.equals(argAutoDelete)) settings.deleteDuplicates = true; else
         Utils.out.println("Unknown argument: "+arg);
     }
 
-    public void processArgs(String[] args, int startIndex) {
+    public void processArgs(String[] args, int startIndex) throws Exception {
         
         for (int i = startIndex; i < args.length; i++) processArg(args[i]);
     }
@@ -396,13 +472,14 @@ public class FindMatches implements Progress {
         Utils.out.println( 5, "name=true/false - compare files by name (default: "+Settings.DEFAULT_SAME_NAME+")");
         Utils.out.println( 5, "size=true/false - compare files by size (default: "+Settings.DEFAULT_SAME_SIZE+")");
         Utils.out.println( 5, "content=true/false - compare files by content (default: "+Settings.DEFAULT_SAME_CONTENT+")");
-        Utils.out.println( 5, "contentminsize=size_in_bytes - set minimum file size when comparing by content, others are different");
-        Utils.out.println( 5, "contentcompare=bytes/hash - compare method (default: "+Settings.DEFAULT_CONTENT_COMPARE.name()+")");
+        Utils.out.println( 5, "contentminsize=size - set minimum file size when comparing by content (ex: 10mb)");
+        Utils.out.println( 5, "contentcompare=bytes/hash/fast - compare method (default: "+Settings.DEFAULT_CONTENT_COMPARE.name()+")");
         Utils.out.println( 5, "matchesonly=true/false - show only files with matches (default: "+Settings.DEFAULT_SHOW_MATCHES_ONLY+")");
         Utils.out.println( 5, "inc=regexp - files or directories to include if matching");
         Utils.out.println( 5, "exc=regexp - files or directories to exclude if matching");
         Utils.out.println( 5, "export=path_to_csv_file - export matched files list to CSV file");
         Utils.out.println( 5, "maxinfo - give max possible info to console");
+        Utils.out.println( 5, "autodelete - auto delete duplicate files");
     }
 
     

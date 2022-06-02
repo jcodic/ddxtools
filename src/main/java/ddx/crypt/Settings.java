@@ -27,5 +27,6 @@ public class Settings extends CommonSettigns {
     public long maxLength = -1;
 
     public boolean copyResultToClipboard = false;
+    public boolean skipUnread = false;
     
 }
