@@ -29,10 +29,15 @@ public class Utils {
         
         boolean isDirectory = file.isDirectory();
         long fileSize = isDirectory?0:file.length();
+        boolean skip = false;
         
+        if ((!isDirectory) &&
+               ((settings.fileMinSize != -1 && fileSize < settings.fileMinSize) ||
+                (settings.fileMaxSize != -1 && fileSize > settings.fileMaxSize))) skip = true;
+
         List<File> result = new LinkedList<>();
         
-        if (includePath(file.getPath(), settings)) {
+        if (!skip && includePath(file.getPath(), settings)) {
             
             result.add(file);
             settings.filesIncluded++;
@@ -45,7 +50,7 @@ public class Utils {
             if (files != null) for (File f : files) result.addAll(scanForFiles(f, settings));
         } else {
             
-            settings.filesSizeFound += fileSize;
+            if (!skip) settings.filesSizeFound += fileSize;
         }
         
         return result;

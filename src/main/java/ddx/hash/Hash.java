@@ -216,14 +216,14 @@ public class Hash implements Progress {
     
     private boolean processHashString() throws Exception {
 
-        Utils.out.println("Hashing string ["+settings.sourceString+"] with settings: ");
-        printAlgo();
-
         if (settings.sourceString == null || settings.sourceString.length() == 0) {
             
             Utils.out.println("String is empty, nothing todo, exit.");
             return false;
         }
+
+        Utils.out.println("Hashing string ["+settings.sourceString+"] length "+settings.sourceString.length()+" bytes, with settings: ");
+        printAlgo();
 
         hashString(settings.sourceString);
         settings.hash = getHash();
@@ -248,6 +248,7 @@ public class Hash implements Progress {
         printAlgo();
 
         md.update(bf);
+        
         
         settings.hash = getHash();
         Utils.out.println("Hash code ["+settings.hash+"]");

@@ -58,6 +58,7 @@ public class ShuffleCrypt extends Crypt {
     private Random rnd;
     private long randomSeed = System.currentTimeMillis();
     private long maxLoad = -1;
+    private int cycleCountFrom = -1; // cycle count to start saving result from
     private int cycleCount = 1;
     private String[] usedAlgo = ALGOS;
     private String algoFilter;
@@ -103,6 +104,23 @@ public class ShuffleCrypt extends Crypt {
         Cipher cipher = getCipher(mode);
         ((PrinterConsole)Utils.out).setPrintAllowed(true);
         return cipher;
+    }
+
+    private boolean saveOutput(byte[] bf, String destinationPath, int postfix) throws Exception {
+
+        File fileOut = new File(destinationPath+(postfix==-1?"":String.valueOf(postfix)));
+        if (fileOut.exists() && !fileOut.delete()) {
+            
+            Utils.out.println("Wrong output file ["+fileOut.getAbsolutePath()+"]");
+        }
+
+        Utils.out.println("Writing output file ["+fileOut.getAbsolutePath()+"]");
+        
+        FileOutputStream fos = new FileOutputStream(fileOut);
+        fos.write(bf);
+        fos.close();
+        
+        return true;
     }
     
     private boolean processEncrypt() throws Exception {
@@ -220,21 +238,9 @@ public class ShuffleCrypt extends Crypt {
             }
             
             Utils.out.println(" done");
-        }
-        
-        File fileOut = new File(destinationPath);
 
-        Utils.out.println("Writing output file ["+fileOut.getAbsolutePath()+"]");
-        
-        if (fileOut.exists() && !fileOut.delete()) {
-            
-            Utils.out.println("Wrong output file!");
-            return false;
+            if (i+1 >= cycleCountFrom && !saveOutput(bf, destinationPath, cycleCountFrom==cycleCount?-1:i+1)) return false;
         }
-        
-        FileOutputStream fos = new FileOutputStream(fileOut);
-        fos.write(bf);
-        fos.close();
         
         if (deleteInput) {
             
@@ -464,6 +470,21 @@ public class ShuffleCrypt extends Crypt {
         }
     }
     
+    private void parseCycleCount(String arg) throws Exception {
+        
+        if (Str.isEmpty(arg)) return;
+        int ind = arg.indexOf("-");
+        if (ind > 0) {
+            
+            cycleCount = Integer.parseInt(arg.substring(ind+1));
+            cycleCountFrom = Integer.parseInt(arg.substring(0, ind));
+        } else {
+            
+            cycleCount = Integer.parseInt(arg);
+            cycleCountFrom = cycleCount;
+        }
+    }
+    
     @Override
     public void processArg(String arg) throws Exception {
         
@@ -473,7 +494,7 @@ public class ShuffleCrypt extends Crypt {
         String argMaxLoad = "maxload=";
         String argDelete = "delete";
         if (arg.startsWith(argSeed)) randomSeed = Long.parseLong(arg.substring(argSeed.length())); else
-        if (arg.startsWith(argCount)) cycleCount = Integer.parseInt(arg.substring(argCount.length())); else
+        if (arg.startsWith(argCount)) parseCycleCount(arg.substring(argCount.length())); else
         if (arg.startsWith(argAlgo)) algoFilter = arg.substring(argAlgo.length()).toLowerCase(); else
         if (arg.startsWith(argMaxLoad)) maxLoad = SizeConv.strToSize(arg.substring(argMaxLoad.length())); else
         if (arg.startsWith(argDelete)) deleteInput = true; else
@@ -497,7 +518,7 @@ public class ShuffleCrypt extends Crypt {
         Utils.out.println(10, "Params: <source_file> <destination_file>");
         Utils.out.println(10, "Available options:");
         Utils.out.println(15, "seed=long - random seed for passwords generation (default: system time in ms)");
-        Utils.out.println(15, "count=int - encryption cycle count (default: "+cycleCount+")");
+        Utils.out.println(15, "count=int - encryption cycle count or range (default: "+cycleCount+") (ex: 5, 20-22)");
         Utils.out.println(15, "algo=filter - use only algorithms which passes filter");
         Utils.out.println(15, "maxload=long - max file size to load (example: 2000mb)");
         Utils.out.println(15, "delete - delete input file");

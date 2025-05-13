@@ -14,6 +14,9 @@ public class CommonSettigns {
     public List<String> includeFiles;
     public List<String> excludeFiles;
 
+    public long fileMinSize = -1;
+    public long fileMaxSize = -1;
+
     public int filesScanned;
     public int filesIncluded;
     public long filesSizeFound;
