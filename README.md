@@ -5,9 +5,9 @@ Set of very simple command line tools:<br/>
 2. Hash - calculate hash of file/path or string<br/>
    <sub>example: hash hash_string "end of file" algo=md5 toclip</sub><br/>
    <sub>example: hash hash c:\temp hash=c:\temp\my.hash exc=.\*my.hash$ algo=sha-256</sub><br/>
-3. HashIndex - store and check sha256 hash indexes of bulk files
-   <sub>example: hashindex createindex d:\ drive_index.ind
-   <sub>example: hashindex check d:\ drive_index.ind
+3. HashIndex - store and check sha256 hash indexes of bulk files<br/>
+   <sub>example: hashindex createindex d:\ drive_index.ind</sub><br/>
+   <sub>example: hashindex check d:\ drive_index.ind</sub><br/>
 5. Hashcrack - crack hash by dictionary/combination or brute force<br/>
    <sub>example: hashcrack crack 0827b22b142ebb1b18d9d93f19f770c6 algo=md5 "mask=?l?l?l ?l?l file" status=10</sub><br/>
    <sub>example: hashcrack crack 0827b22b142ebb1b18d9d93f19f770c6 algo=md5 0d=c:\dict\example.dict "mask=?0 ?0 ?0"</sub><br/>
