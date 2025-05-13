@@ -5,19 +5,20 @@ Set of very simple command line tools:<br/>
 2. Hash - calculate hash of file/path or string<br/>
    <sub>example: hash hash_string "end of file" algo=md5 toclip</sub><br/>
    <sub>example: hash hash c:\temp hash=c:\temp\my.hash exc=.\*my.hash$ algo=sha-256</sub><br/>
-3. Hashcrack - crack hash by dictionary/combination or brute force<br/>
+3. HashIndex - store and check sha256 hash indexes of bulk files
+4. Hashcrack - crack hash by dictionary/combination or brute force<br/>
    <sub>example: hashcrack crack 0827b22b142ebb1b18d9d93f19f770c6 algo=md5 "mask=?l?l?l ?l?l file" status=10</sub><br/>
    <sub>example: hashcrack crack 0827b22b142ebb1b18d9d93f19f770c6 algo=md5 0d=c:\dict\example.dict "mask=?0 ?0 ?0"</sub><br/>
-4. Performance - evaluate performance on compress/encrypt using specified number of threads<br/>
+5. Performance - evaluate performance on compress/encrypt using specified number of threads<br/>
    <sub>example: performance run time=30</sub><br/>
    <sub>example: performance run time=30 threads=8 fill=false compress=false encrypt=false</sub><br/>
-5. Matches - find same files on different paths & disks, comparing them by name,size or content<br/>
+6. Matches - find same files on different paths & disks, comparing them by name,size or content<br/>
    <sub>example: matches path=q:</sub><br/>
    <sub>example: matches path=q: path=u:\temp name=false content=true export=c:\report.csv</sub><br/>
-6. Fill - write file filled with random bytes including hash code for later checking<br/>
+7. Fill - write file filled with random bytes including hash code for later checking<br/>
    <sub>example: fill fill data.raw 100gb algo=sha-512 buffer=256kb</sub><br/>
    <sub>example: fill check data.raw</sub><br/>
-7. FileTools - set of tools to work with binary file<br/>
+8. FileTools - set of tools to work with binary file<br/>
    <sub>example: filetools search binfile.dat FFFCBB</sub><br/>
    <sub>example: filetools cut binfile.dat pieces 100kb max=10</sub><br/>
    <sub>example: filetools inverse binfile.dat inversed.dat shuffle=10000 filebf=100kb</sub><br/>
