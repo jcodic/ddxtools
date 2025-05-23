@@ -20,8 +20,12 @@ public class Settings extends CommonSettigns {
     public String hash;
     public String name;
     public String csvFile;
+    public String csvFileFrom;
     public boolean hashNames = DEFAULT_HASH_NAMES;
     public boolean checkSuccess;
+    public boolean showFiles = true;
+    public boolean showFilesFound = true;
+    public boolean showFilesMissed = true;
 
     public String sourceString;
     

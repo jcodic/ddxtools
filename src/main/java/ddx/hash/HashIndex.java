@@ -7,11 +7,13 @@ import ddx.common.Str;
 import ddx.common.Utils;
 import ddx.hash.types.FileHash;
 import ddx.hash.types.HashIndexFile;
+import ddx.hash.types.SimpleFile;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,7 +25,7 @@ import java.util.Set;
  */
 public class HashIndex implements Progress {
     
-    public static enum Command {CREATE_INDEX, REFRESH_INDEX, CHECK, CHECK_INDEX, CHECK_INDEX_EQ, ADD, SUB, PRINT, INFO};
+    public static enum Command {CREATE_INDEX, REFRESH_INDEX, CHECK, CHECK_INDEX, CHECK_INDEX_EQ, ADD, SUB, DELETE, PRINT, INFO, SCAN};
     
     private Command command;
     private final Settings settings = new Settings();
@@ -346,6 +348,24 @@ public class HashIndex implements Progress {
         return true;
     }
 
+    private boolean isFileHashInSettings(FileHash fh) throws Exception {
+        
+        boolean skip = false;
+        
+        if ((settings.fileMinSize != -1 && fh.getSize() < settings.fileMinSize) ||
+            (settings.fileMaxSize != -1 && fh.getSize() > settings.fileMaxSize)) skip = true;        
+        
+        if (skip) return false;
+            
+        if (!Str.isEmpty(settings.name)) skip = !fh.getName().toLowerCase().contains(settings.name.toLowerCase());
+        
+        if (skip) return false;
+        
+        if (!Str.isEmpty(settings.hash)) skip = !Utils.toHex(fh.getHash()).toLowerCase().contains(settings.hash.toLowerCase());
+           
+        return !skip;
+    }
+    
     private boolean processCheckIndex() throws Exception {
 
         if (!new File(settings.hashFile).exists()) {
@@ -377,7 +397,8 @@ public class HashIndex implements Progress {
         }
         
         int totalFound = 0;
-        int totalMissed = 0;        
+        int totalMissed = 0; 
+        int totalSkipped = 0;
         boolean exportEnabled = !Str.isEmpty(settings.csvFile);
         StringBuilder sb = null;
         
@@ -392,20 +413,30 @@ public class HashIndex implements Progress {
                 
         for (FileHash fh : indexA.getHashes()) {
             
+            if (!isFileHashInSettings(fh)) {
+                
+                totalSkipped++;
+                continue;
+            }
+            
             boolean found = indexB.getHashes().contains(fh);
             if (found) totalFound++; else totalMissed++;
 
-            Utils.out.println(fh.getName() + " [" + Utils.describeFileLength(fh.getSize()) + "] "+(found?"found":"missed"));
+            boolean showFile = (settings.showFiles && ((found && settings.showFilesFound) || (!found && settings.showFilesMissed)));
+            
+            if (showFile)
+                Utils.out.println(fh.getName() + " [" + Utils.describeFileLength(fh.getSize()) + "] "+(found?"found":"missed"));
 
-            if (exportEnabled) {
+            if (exportEnabled && showFile) {
 
                 sb.append(fh.getName()).append(";").
                    append(String.valueOf(fh.getSize())).append(";").append(found?"yes":"no").append("\n");
             }            
         }
         
-        Utils.out.println("Files found  : "+totalFound);
-        Utils.out.println("Files missed : "+totalMissed);
+        Utils.out.println("Files skipped : "+totalSkipped);
+        Utils.out.println("Files found   : "+totalFound);
+        Utils.out.println("Files missed  : "+totalMissed);
         
         if (exportEnabled) {
         
@@ -498,6 +529,12 @@ public class HashIndex implements Progress {
         int totalSkipped = 0;
         
         for (FileHash fh : indexA.getHashes()) {
+
+            if (!isFileHashInSettings(fh)) {
+                
+                totalSkipped++;
+                continue;
+            }
             
             boolean found = indexB.getHashes().contains(fh);
             if (!found) {
@@ -552,6 +589,12 @@ public class HashIndex implements Progress {
         
         for (FileHash fh : indexA.getHashes()) {
             
+            if (!isFileHashInSettings(fh)) {
+                
+                totalSkipped++;
+                continue;
+            }
+
             boolean found = indexB.getHashes().contains(fh);
             if (found) {
                 
@@ -570,6 +613,51 @@ public class HashIndex implements Progress {
         return true;
     }
 
+    private boolean processDelete() throws Exception {
+
+        if (settings.hash == null || settings.hash.length() != 64) {
+            
+            Utils.out.println("hash code is not correct!");
+            return false;
+        }
+        
+        if (!new File(settings.hashFile).exists()) {
+            
+            Utils.out.println("index file ["+settings.hashFile+"] not exists!");
+            return false;
+        }
+        
+        HashIndexFile index = HashFileUtils.loadHashIndexFile(settings.hashFile);
+        
+        if (index.getLength() == 0) {
+            
+            Utils.out.println("nothing to do!");
+            return true;
+        }
+        
+        byte[] hash = Utils.fromHex(settings.hash);
+        FileHash fhRemove = null;
+        
+        for (FileHash fh : index.getHashes()) {
+        
+           if (Arrays.equals(fh.getHash(), hash)) {
+               
+               fhRemove = fh;
+               break;
+           } 
+        }
+        
+        boolean removed = fhRemove != null && index.getHashes().remove(fhRemove);
+        
+        if (removed) {
+
+            Utils.out.println("Removed hash: " + Utils.toHex(hash));
+            HashFileUtils.writeHashIndexFile(index, settings.hashFile);
+        }
+        
+        return true;
+    }
+
     private boolean processPrint() throws Exception {
 
         if (!new File(settings.hashFile).exists()) {
@@ -579,10 +667,6 @@ public class HashIndex implements Progress {
         }
         
         HashIndexFile hif = HashFileUtils.loadHashIndexFile(settings.hashFile);
-        String nameContain = null;
-        String hashContain = null;
-        if (!Str.isEmpty(settings.name)) nameContain = settings.name.toLowerCase();
-        if (!Str.isEmpty(settings.hash)) hashContain = settings.hash.toLowerCase();
 
         boolean exportEnabled = !Str.isEmpty(settings.csvFile);
         StringBuilder sb = null;
@@ -596,28 +680,54 @@ public class HashIndex implements Progress {
                append("hash").append("\n");            
         }
         
+        boolean fromCsv = !Str.isEmpty(settings.csvFileFrom);
+        List<SimpleFile> fromCsvList = null;
+        
+        if (fromCsv) {
+        
+            if (!new File(settings.csvFileFrom).exists()) {
+
+                Utils.out.println("Csv file ["+settings.csvFileFrom+"] not exists!");
+                return false;
+            }
+            
+            fromCsvList = CsvFileUtils.loadNameSizeFromCsvFile(settings.csvFileFrom);
+            
+            if (fromCsvList.isEmpty()) {
+                
+                Utils.out.println("Nothing to print!");
+                return true;
+            }
+        }        
+        
         for (FileHash fh : hif.getHashes()) {
             
-            boolean show = true;
-            String name = fh.getName();
-            String hash = Utils.toHex(fh.getHash());
-            long fileSize = fh.getSize();
-            
-            if (show && nameContain != null && !name.toLowerCase().contains(nameContain)) show = false;
-            if (show && hashContain != null && !hash.toLowerCase().contains(hashContain)) show = false;
-            if ((show) &&
-                   ((settings.fileMinSize != -1 && fileSize < settings.fileMinSize) ||
-                    (settings.fileMaxSize != -1 && fileSize > settings.fileMaxSize))) show = false;
+            boolean show = isFileHashInSettings(fh);
 
+            if (show && fromCsv) {
+                
+                boolean simpleFound = false;
+                
+                for (SimpleFile sf : fromCsvList) {
+                    
+                    if (sf.getSize() == fh.getSize() && sf.getName().equals(fh.getName())) {
+                        
+                        simpleFound = true;
+                        break;
+                    }
+                }
+                
+                show = simpleFound;
+            }
             
             if (show) {
                 
-                Utils.out.println(fh.getName() + " " + SizeConv.sizeToStrSimple(fileSize) + " " + hash);
+                Utils.out.println(fh.getName() + " " + SizeConv.sizeToStrSimple(fh.getSize()) + " " + Utils.toHex(fh.getHash()));
 
                 if (exportEnabled) {
                     
-                    sb.append(name).append(";").
-                       append(String.valueOf(fileSize)).append(";").append(Utils.toHex(fh.getHash())).append("\n");                    
+                    sb.append(fh.getName()).append(";").
+                       append(String.valueOf(fh.getSize())).append(";").append(Utils.toHex(fh.getHash())).append("\n");                    
                 }
             }
         }
@@ -664,6 +774,35 @@ public class HashIndex implements Progress {
 
         return true;
     }
+
+    private boolean processScan() throws Exception {
+
+        if (!new File(settings.sourcePath).exists()) {
+            
+            Utils.out.println("Source path ["+settings.sourcePath+"] not exists!");
+            return false;
+        }
+        
+        Utils.out.println("Scan ["+settings.sourcePath+"] with settings: ");
+        printSettings();
+        
+        List<File> files = Utils.scanForFiles(new File(settings.sourcePath), settings);
+
+        Utils.out.println();
+
+        if (settings.showFiles)
+            for (File file : files) {
+
+                Utils.out.println(file.getPath());
+            }
+        
+        Utils.out.println("Files scanned : "+settings.filesScanned);
+        Utils.out.println("Files included: "+settings.filesIncluded);
+        Utils.out.println("Files size found: "+Utils.describeFileLength(settings.filesSizeFound));
+        Utils.out.println("Files size included: "+Utils.describeFileLength(settings.filesSizeIncluded));
+        
+        return true;
+    }
     
     public boolean run() throws Exception {
         
@@ -678,8 +817,10 @@ public class HashIndex implements Progress {
             case CHECK_INDEX_EQ     : return processCheckIndexEq();
             case ADD                : return processAdd();
             case SUB                : return processSub();
+            case DELETE             : return processDelete();
             case PRINT              : return processPrint();
             case INFO               : return processInfo();
+            case SCAN               : return processScan();
             default : return false;
         }
     }
@@ -689,6 +830,7 @@ public class HashIndex implements Progress {
         String argName = "name=";
         String argHash = "hash=";
         String argCSV = "csv=";
+        String argFromCSV = "fromcsv=";
         String argInc = "inc=";
         String argIncFile = "incf=";
         String argExc = "exc=";
@@ -696,10 +838,15 @@ public class HashIndex implements Progress {
         String argHashNames = "hashnames=";
         String argMinSize = "minsize=";
         String argMaxSize = "maxsize=";
+        String argShowFiles = "showfiles=";
+        String argShowFilesFound = "showfilesfound=";
+        String argShowFilesMissed = "showfilesmissed=";
+      
         String argToClip = "toclip";
         if (arg.startsWith(argName)) settings.name = arg.substring(argName.length()); else
         if (arg.startsWith(argHash)) settings.hash = arg.substring(argHash.length()); else
         if (arg.startsWith(argCSV)) settings.csvFile = arg.substring(argCSV.length()); else
+        if (arg.startsWith(argFromCSV)) settings.csvFileFrom = arg.substring(argFromCSV.length()); else
         if (arg.startsWith(argInc)) settings.addToInclude(arg.substring(argInc.length())); else
         if (arg.startsWith(argIncFile)) settings.addToInclude(Utils.loadFileStrings(arg.substring(argIncFile.length()))); else
         if (arg.startsWith(argExc)) settings.addToExclude(arg.substring(argExc.length())); else
@@ -707,6 +854,9 @@ public class HashIndex implements Progress {
         if (arg.startsWith(argHashNames)) settings.hashNames = Boolean.parseBoolean(arg.substring(argHashNames.length())); else
         if (arg.startsWith(argMinSize)) settings.fileMinSize = SizeConv.strToSize(arg.substring(argMinSize.length())); else
         if (arg.startsWith(argMaxSize)) settings.fileMaxSize = SizeConv.strToSize(arg.substring(argMaxSize.length())); else
+        if (arg.startsWith(argShowFiles)) settings.showFiles = Boolean.parseBoolean(arg.substring(argShowFiles.length())); else
+        if (arg.startsWith(argShowFilesFound)) settings.showFilesFound = Boolean.parseBoolean(arg.substring(argShowFilesFound.length())); else
+        if (arg.startsWith(argShowFilesMissed)) settings.showFilesMissed = Boolean.parseBoolean(arg.substring(argShowFilesMissed.length())); else
         if (arg.equals(argToClip)) settings.copyResultToClipboard = true; else
         Utils.out.println("Unknown argument: "+arg);
     }
@@ -728,6 +878,10 @@ public class HashIndex implements Progress {
         settings.sourceString = sourceString;
     }
 
+    public void setHash(String hash) {
+        settings.hash = hash;
+    }
+    
     public void setHashFile(String hashFile) {
         settings.hashFile = hashFile;
     }
@@ -764,7 +918,7 @@ public class HashIndex implements Progress {
         Utils.out.println(15, "exc=regexp - files or directories to exclude if matching");
         Utils.out.println(15, "minsize=size - set minimum file size to include in index file (ex: 100kb)");
         Utils.out.println(15, "maxsize=size - set maximum file size to include in index file (ex: 1tb)");
-        Utils.out.println( 5, "refreshindex - fast update hash index <index_file> of specified <source_file_or_directory>");
+        Utils.out.println( 5, "refreshindex - fast update (skip same name+size) hash index <index_file> of specified <source_file_or_directory>");
         Utils.out.println(10, "Params: <source_file_or_directory> <index_file>");
         Utils.out.println( 5, "check - check <source_file_or_directory> against <index_file>");
         Utils.out.println(10, "Params: <source_file_or_directory> <index_file>");
@@ -778,14 +932,20 @@ public class HashIndex implements Progress {
         Utils.out.println(10, "Params: <index_A> <index_B> <index_C>");
         Utils.out.println( 5, "sub - substract <index_A> from <index_B> write result to <index_C>");
         Utils.out.println(10, "Params: <index_A> <index_B> <index_C>");
+        Utils.out.println( 5, "delete - delete hash from <index_file>");
+        Utils.out.println(10, "Params: <hash> <index_file>");
         Utils.out.println( 5, "print - print content of <index_file>");
         Utils.out.println(10, "Params: <index_file>");
         Utils.out.println(10, "Available options:");
         Utils.out.println(15, "name=text - name contains text");
         Utils.out.println(15, "hash=hex - hash contains hex");
+        Utils.out.println(15, "fromcsv=extract exact name+size from csv");
         Utils.out.println(15, "also: minsize,maxsize,csv");
         Utils.out.println( 5, "info - brief info of <index_file>");
         Utils.out.println(10, "Params: <index_file>");
+        Utils.out.println( 5, "scan - give brief info of scan <source_file_or_directory> used in createindex");
+        Utils.out.println(10, "Params: <source_file_or_directory>");
+        Utils.out.println(10, "Available options: same to createindex + showfiles=boolean showfilesfound/showfilesmissed");
     }
 
     public static void main(String[] args) {
@@ -853,6 +1013,13 @@ public class HashIndex implements Progress {
                     tool.setHashFile3(args[3]);               
                     tool.processArgs(args, 4);
                     break;
+                case "delete"  : 
+                    tool.setCommand(Command.DELETE); 
+                    if (!Utils.checkArgs(args, 3)) return;
+                    tool.setHash(args[1]);               
+                    tool.setHashFile(args[2]);               
+                    tool.processArgs(args, 3);
+                    break;
                 case "print"  : 
                     tool.setCommand(Command.PRINT); 
                     if (!Utils.checkArgs(args, 2)) return;
@@ -863,6 +1030,12 @@ public class HashIndex implements Progress {
                     tool.setCommand(Command.INFO); 
                     if (!Utils.checkArgs(args, 2)) return;
                     tool.setHashFile(args[1]);
+                    tool.processArgs(args, 2);
+                    break;
+                case "scan"  : 
+                    tool.setCommand(Command.SCAN); 
+                    if (!Utils.checkArgs(args, 2)) return;
+                    tool.setSourcePath(args[1]);
                     tool.processArgs(args, 2);
                     break;
                 case "ver"      : 
