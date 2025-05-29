@@ -258,6 +258,14 @@ public class Utils {
         return path.replace("\\", "/");
     }
     
+    public static String getZipNameWithoutPath(String path) {
+        
+        if (path == null || path.length() == 0) return path;
+        int i = path.lastIndexOf("/");
+        if (i == -1 || i + 1 == path.length()) return path;
+        return path.substring(i + 1);
+    }
+    
     public static boolean includePath(String path, CommonSettigns settings) {
         
         if (isEmptyString(path)) return false;

@@ -84,13 +84,13 @@ public class HashFileUtils {
         BufferedInputStream reader = new BufferedInputStream(fileReader);
         
         int b = reader.read();
-        if (b != HashIndexFile.PREFIX) throw new Exception("wrong file format!");
+        if (b != HashIndexFile.PREFIX) throw new Exception("wrong file format :: prefix!");
         
         byte[] bf = new byte[4];
         b = reader.read(bf);
-        if (b != bf.length) throw new Exception("wrong file format!");
+        if (b != bf.length) throw new Exception("wrong file format :: total files len!");
         int totalFiles = Utils.bytesToInt(bf);
-        if (totalFiles < 0) throw new Exception("wrong file format!");
+        if (totalFiles < 0) throw new Exception("wrong file format :: total files!");
 
         Utils.out.print("files in index: " + totalFiles);
 
@@ -98,7 +98,7 @@ public class HashFileUtils {
             
             byte[] hashCheck = new byte[32];
             b = reader.read(hashCheck);
-            if (b != hashCheck.length) throw new Exception("wrong file format!");
+            if (b != hashCheck.length) throw new Exception("wrong file format :: sha256 checksum!");
             hif.setCheckHash(hashCheck);
 
             for (int i = 0; i < totalFiles; i++) {
@@ -108,26 +108,26 @@ public class HashFileUtils {
                 // read name
                 bf = new byte[2];
                 b = reader.read(bf);
-                if (b != bf.length) throw new Exception("wrong file format!");
+                if (b != bf.length) throw new Exception("wrong file format :: name length!");
                 b = Utils.bytesToShort(bf);
-                if (b <= 0) throw new Exception("wrong file format!");
+                if (b <= 0) throw new Exception("wrong file format :: name length!");
                 bf = new byte[b];
                 b = reader.read(bf);
-                if (b != bf.length) throw new Exception("wrong file format!");
+                if (b != bf.length) throw new Exception("wrong file format :: name!");
                 fh.setName(new String(bf, "UTF-8"));
 
                 // read size
                 bf = new byte[8];
                 b = reader.read(bf);
-                if (b != bf.length) throw new Exception("wrong file format!");
+                if (b != bf.length) throw new Exception("wrong file format :: file size!");
                 long size = Utils.bytesToLong(bf);
-                if (size <= 0) throw new Exception("wrong file format!");
+                if (size < 0) throw new Exception("wrong file format :: file size!");
                 fh.setSize(size);
 
                 // read hash
                 bf = new byte[32];
                 b = reader.read(bf);
-                if (b != bf.length) throw new Exception("wrong file format!");
+                if (b != bf.length) throw new Exception("wrong file format :: file hash!");
                 fh.setHash(bf);
 
                 fileHashes.add(fh);

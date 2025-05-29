@@ -8,6 +8,9 @@ import ddx.common.Progress;
 import ddx.common.SizeConv;
 import ddx.common.Utils;
 import ddx.common.Xoshiro256p;
+import ddx.hash.HashFileUtils;
+import ddx.hash.types.FileHash;
+import ddx.hash.types.HashIndexFile;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -26,7 +29,9 @@ import java.security.Security;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -43,7 +48,8 @@ import javax.crypto.spec.SecretKeySpec;
  */
 public class Crypt implements Progress {
     
-    public static enum Command {READ, ENCRYPT, ENCRYPT_STRING, ENCRYPT_FILE_STRING, DECRYPT, DECRYPT_STRING, DECRYPT_STRING_FILE, CHECK, TO_HEX, FROM_HEX, SELF_TEST};
+    public static enum Command {READ, ENCRYPT, ENCRYPT_STRING, ENCRYPT_FILE_STRING, DECRYPT, DECRYPT_STRING, DECRYPT_STRING_FILE, 
+                                CHECK, HASH_INDEX, TO_HEX, FROM_HEX, SELF_TEST};
     
     private Command command;
     protected final Settings settings = new Settings();
@@ -234,7 +240,9 @@ public class Crypt implements Progress {
     
         for (File file : files) {
 
-            if (file.isDirectory()) {
+            boolean isDirectory = file.isDirectory();
+            
+            if (isDirectory) {
 
                 Utils.out.print(" [dir] " + file.getPath() + " ");
                 
@@ -245,7 +253,7 @@ public class Crypt implements Progress {
             
             String path = onlySingleFile?file.getName():Utils.getPathLess(file.getPath(), settings.sourcePath);
             
-            if (file.isDirectory()) {
+            if (isDirectory) {
                 
                 if (!Utils.isEmptyString(path)) {
                     
@@ -256,6 +264,12 @@ public class Crypt implements Progress {
                     Utils.out.println(" skip");
                 }
                 
+                continue;
+            }
+            
+            if (!isDirectory && settings.directoriesOnly) {
+                
+                Utils.out.println(" skip");
                 continue;
             }
             
@@ -482,6 +496,86 @@ public class Crypt implements Progress {
         fis.close();
         
         return totalZipEntries > 0;
+    }
+    
+    private HashIndexFile getHashIndex() throws Exception {
+
+        InputStream fis = isMultipart()?new MultiFileInputStream(settings.sourcePath.substring(0, settings.sourcePath.length()-4)):new FileInputStream(settings.sourcePath);
+        InputStream ois = fis;
+        CipherInputStream cis = null;
+        if (settings.useEncryption) ois = cis = new CipherInputStream(fis, getCipher(Cipher.DECRYPT_MODE));
+        ZipInputStream zis = new ZipInputStream(ois);
+        
+        HashIndexFile hif = new HashIndexFile();
+        Set<FileHash> hashes = new LinkedHashSet<FileHash>();
+        hif.setHashes(hashes);
+        
+        ZipEntry entry = zis.getNextEntry();
+        while (entry != null) {
+            
+            String filePathAbs = entry.getName();
+            long crcOriginal = entry.getCrc();
+            boolean crcCheck = crcOriginal != -1;
+            String crcInfo = "";
+
+            boolean includePath = Utils.includePath(filePathAbs, settings);
+            
+            if (!entry.isDirectory()) {
+
+                Utils.out.print("[file] " + filePathAbs + " ");
+                
+                if (includePath) {
+                
+                    CRC32 crc = crcCheck?new CRC32():null;
+
+                    int loaded;
+                    int loadedTotal = 0;
+                    long fileSize = 0;
+                    byte[] bf = new byte[Const.FILE_BUFFER_SIZE];
+                    MessageDigest md = MessageDigest.getInstance("SHA-256");
+
+                    while ((loaded = zis.read(bf)) > 0) {
+
+                        if (crcCheck) crc.update(bf, 0, loaded);
+                        md.update(bf, 0, loaded);
+
+                        loadedTotal += loaded;
+                        fileSize += loaded;
+                        settings.filesSizeProcessed += loaded;
+                        if (loadedTotal >= Const.PRINT_STR_AT_EVERY_BYTES) {
+
+                            Utils.out.print(Const.PRINT_STR);
+                            loadedTotal -= Const.PRINT_STR_AT_EVERY_BYTES;
+                        }
+                    }
+
+                    FileHash fh = new FileHash();
+                    fh.setSize(fileSize);
+                    fh.setName(Utils.getZipNameWithoutPath(filePathAbs));
+                    fh.setHash(md.digest());
+                    hashes.add(fh);
+
+                    if (crcCheck) crcInfo = (crcOriginal == crc.getValue())?", crc ok":", crc error!";
+
+                    Utils.out.print(Utils.describeFileLength(fileSize));
+                }
+                
+            } else {
+
+                Utils.out.print(" [dir] " + filePathAbs + " ");
+            }
+
+            Utils.out.println(includePath?(" done"+crcInfo):" skip");
+            
+            zis.closeEntry();
+            entry = zis.getNextEntry();
+        }
+        
+        zis.close();
+        if (cis != null) cis.close();
+        fis.close();
+        
+        return hif;
     }
     
     private String encryptString(String source) throws Exception {
@@ -726,6 +820,56 @@ public class Crypt implements Progress {
         } else {
             
             Utils.out.println("Wrong password or file damaged!");
+        }
+        
+        return success;
+    }
+    
+    private boolean processHashIndex() throws Exception {
+
+        File file = new File(settings.sourcePath);
+        if (!file.exists()) {
+            
+            Utils.out.println("Source file ["+settings.sourcePath+"] not exists!");
+            return false;
+        }
+        if (!file.isFile()) {
+            
+            Utils.out.println("Source ["+settings.sourcePath+"] is not a file!");
+            return false;
+        }
+
+        Utils.out.println("Extract hash index from file ["+settings.sourcePath+"] with settings: ");
+        printEncryption();
+        printIncludeExclude();
+        Utils.out.println(5, "Output path: "+settings.destinationPath);
+        
+        long start = System.currentTimeMillis();
+        
+        starting();
+        HashIndexFile hif = getHashIndex();
+        completed();
+        
+        long end = System.currentTimeMillis();
+        long time = (end - start) / 1_000;
+        
+        if (time > 0) {
+            
+            long bytesPerSecong = settings.filesSizeProcessed / time;
+            Utils.out.println("Processing speed: "+Utils.describeFileLength(bytesPerSecong)+" per second.");
+        }
+        
+        boolean success = hif.getLength() > 0;
+        
+        if (success) {
+            
+            HashFileUtils.writeHashIndexFile(hif, settings.destinationPath);
+            
+            Utils.out.println("Total hash index files: "+hif.getLength());
+            Utils.out.println("Total content size extracted: "+Utils.describeFileLength(settings.filesSizeProcessed));
+        } else {
+            
+            Utils.out.println("No hash indexes extracted!");
         }
         
         return success;
@@ -1027,6 +1171,7 @@ public class Crypt implements Progress {
             case DECRYPT_STRING         : return processDecryptString();
             case DECRYPT_STRING_FILE    : return processDecryptStringFile();
             case CHECK                  : return processCheck();
+            case HASH_INDEX             : return processHashIndex();
             case TO_HEX                 : return processToHex();
             case FROM_HEX               : return processFromHex();
             case SELF_TEST              : return processSelfTest();
@@ -1044,6 +1189,7 @@ public class Crypt implements Progress {
         String argInc = "inc=";
         String argExc = "exc=";
         String argCRC = "crc=";
+        String argDirsOnly = "dirsonly=";
         String argMaxLength = "maxlength=";
         String argCharset = "charset=";
         String argToClip = "toclip";
@@ -1056,6 +1202,7 @@ public class Crypt implements Progress {
         if (arg.startsWith(argInc)) settings.addToInclude(arg.substring(argInc.length())); else
         if (arg.startsWith(argExc)) settings.addToExclude(arg.substring(argExc.length())); else
         if (arg.startsWith(argCRC)) settings.calcCRC = Boolean.parseBoolean(arg.substring(argCRC.length())); else
+        if (arg.startsWith(argDirsOnly)) settings.directoriesOnly = Boolean.parseBoolean(arg.substring(argDirsOnly.length())); else
         if (arg.startsWith(argMaxLength)) settings.maxLength = SizeConv.strToSize(arg.substring(argMaxLength.length())); else
         if (arg.startsWith(argCharset)) settings.charset = arg.substring(argCharset.length()); else
         if (arg.equals(argToClip)) settings.copyResultToClipboard = true; else
@@ -1129,6 +1276,7 @@ public class Crypt implements Progress {
         Utils.out.println(15, "passwordhex=specify password as hex string");
         Utils.out.println(15, "maxlength=value - split in multiple parts with max length (example: 2000mb)");
         Utils.out.println(15, "skipunread - skip files that cannot be read");
+        Utils.out.println(15, "dirsonly=true/false - include only directories (default: "+Settings.DEFAULT_DIRECTORIES_ONLY+")");
 
         Utils.out.println( 5, "decrypt - decrypt & decompress part or entire encrypted file to specified destination path");
         Utils.out.println(10, "Params: <encrypted_file> <destination_path>");
@@ -1145,6 +1293,9 @@ public class Crypt implements Progress {
         Utils.out.println(15, "encrypt=true/false - decrypt entire content (default: "+Settings.DEFAULT_USE_ENCRYPTION+")");
         Utils.out.println(15, "algo=algorithm - specify decryption algorithm (default: "+Settings.DEFAULT_CRYPT_ALGORITHM+")");
         Utils.out.println(15, "password=secretphrase - specify password (will be prompted in command line if not provided)");
+        
+        Utils.out.println( 5, "hash_index - decrypt & decompress entire encrypted file and write hash index file");
+        Utils.out.println(10, "Params: <encrypted_file> <hash_index>");
         
         Utils.out.println( 5, "list - print some encryption algorithms available");
         
@@ -1281,6 +1432,13 @@ public class Crypt implements Progress {
                     if (!Utils.checkArgs(args, 2)) return;
                     tool.setSourcePath(args[1]);
                     tool.processArgs(args, 2);
+                    break;
+                case "hash_index"  :
+                    tool.setCommand(Command.HASH_INDEX); 
+                    if (!Utils.checkArgs(args, 3)) return;
+                    tool.setSourcePath(args[1]);
+                    tool.setDestinationPath(args[2]);
+                    tool.processArgs(args, 3);
                     break;
                 case "list"     : 
                     printProviders(); 
